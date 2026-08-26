@@ -1,3 +1,84 @@
 {
-  "agents": {}
+  "agents": {
+    "rusty": {
+      "persistent_name": "Rusty",
+      "role": "Lead",
+      "universe": "Ocean's Eleven",
+      "folder": ".squad/agents/rusty",
+      "charter": ".squad/agents/rusty/charter.md",
+      "created_at": "2026-08-26T09:05:58+02:00",
+      "legacy_named": false,
+      "status": "active"
+    },
+    "linus": {
+      "persistent_name": "Linus",
+      "role": "Extension Dev",
+      "universe": "Ocean's Eleven",
+      "folder": ".squad/agents/linus",
+      "charter": ".squad/agents/linus/charter.md",
+      "created_at": "2026-08-26T09:05:58+02:00",
+      "legacy_named": false,
+      "status": "active"
+    },
+    "saul": {
+      "persistent_name": "Saul",
+      "role": "UI Dev",
+      "universe": "Ocean's Eleven",
+      "folder": ".squad/agents/saul",
+      "charter": ".squad/agents/saul/charter.md",
+      "created_at": "2026-08-26T09:05:58+02:00",
+      "legacy_named": false,
+      "status": "active"
+    },
+    "livingston": {
+      "persistent_name": "Livingston",
+      "role": "Tester",
+      "universe": "Ocean's Eleven",
+      "folder": ".squad/agents/livingston",
+      "charter": ".squad/agents/livingston/charter.md",
+      "created_at": "2026-08-26T09:05:58+02:00",
+      "legacy_named": false,
+      "status": "active"
+    },
+    "scribe": {
+      "persistent_name": "Scribe",
+      "role": "Session Logger",
+      "universe": "builtin",
+      "folder": ".squad/agents/scribe",
+      "charter": ".squad/agents/scribe/charter.md",
+      "created_at": "2026-08-26T09:05:58+02:00",
+      "legacy_named": false,
+      "status": "active"
+    },
+    "ralph": {
+      "persistent_name": "Ralph",
+      "role": "Work Monitor",
+      "universe": "builtin",
+      "folder": ".squad/agents/ralph",
+      "charter": ".squad/agents/ralph/charter.md",
+      "created_at": "2026-08-26T09:05:58+02:00",
+      "legacy_named": false,
+      "status": "active"
+    },
+    "rai": {
+      "persistent_name": "Rai",
+      "role": "RAI Reviewer",
+      "universe": "builtin",
+      "folder": ".squad/agents/Rai",
+      "charter": ".squad/agents/Rai/charter.md",
+      "created_at": "2026-08-26T09:05:58+02:00",
+      "legacy_named": false,
+      "status": "active"
+    },
+    "fact-checker": {
+      "persistent_name": "Fact Checker",
+      "role": "Fact Checker",
+      "universe": "builtin",
+      "folder": ".squad/agents/fact-checker",
+      "charter": ".squad/agents/fact-checker/charter.md",
+      "created_at": "2026-08-26T09:05:58+02:00",
+      "legacy_named": false,
+      "status": "active"
+    }
+  }
 }

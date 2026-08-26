@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>DevOps Notifier — Options</title>
+  <link rel="stylesheet" href="options.css" />
+</head>
+<body>
+  <h1>Azure DevOps Notifier Settings</h1>
+
+  <form id="options-form">
+    <div class="field">
+      <label for="org-url">Azure DevOps Organization URL</label>
+      <input
+        type="text"
+        id="org-url"
+        name="orgUrl"
+        placeholder="https://dev.azure.com/yourorg"
+        autocomplete="off"
+      />
+    </div>
+
+    <div class="field">
+      <label for="pat">Personal Access Token</label>
+      <input
+        type="password"
+        id="pat"
+        name="pat"
+        placeholder="••••••••••••••••"
+        autocomplete="new-password"
+      />
+    </div>
+
+    <div class="actions">
+      <button type="button" id="test-btn">Test Connection</button>
+      <button type="submit" id="save-btn">Save</button>
+    </div>
+  </form>
+
+  <div id="result"></div>
+
+  <p class="info-text">Polling interval: every 30 seconds</p>
+
+  <script src="options.js"></script>
+</body>
+</html>

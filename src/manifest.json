@@ -1,0 +1,28 @@
+{
+  "manifest_version": 3,
+  "name": "Azure DevOps Deployment Notifier",
+  "version": "0.1.0",
+  "description": "Monitors Azure DevOps deployments and sends desktop notifications",
+  "permissions": ["storage", "notifications", "alarms", "tabs"],
+  "host_permissions": [
+    "https://vsrm.dev.azure.com/*",
+    "https://dev.azure.com/*"
+  ],
+  "background": {
+    "service_worker": "background/service-worker.js"
+  },
+  "action": {
+    "default_popup": "popup/popup.html",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "options_page": "options/options.html",
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  }
+}

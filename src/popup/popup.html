@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>DevOps Notifier</title>
+  <link rel="stylesheet" href="popup.css" />
+</head>
+<body>
+  <header>
+    <h1>DevOps Notifier</h1>
+    <a id="options-link" href="#" title="Options">&#9881;</a>
+  </header>
+
+  <div id="no-credentials" class="section hidden">
+    <p>Please configure your Azure DevOps credentials first.</p>
+    <button id="open-options-btn">Open Options</button>
+  </div>
+
+  <div id="context-monitor" class="section hidden">
+    <div id="ctx-pipeline-header"></div>
+    <div id="ctx-body"></div>
+  </div>
+
+  <div id="monitored" class="section hidden">
+    <p class="section-label">Monitored pipelines</p>
+    <div id="pipeline-list"></div>
+  </div>
+
+  <div id="status" class="status"></div>
+
+  <script src="popup.js"></script>
+</body>
+</html>
