@@ -12,12 +12,13 @@
 
 | Name | Role | Charter | Emoji |
 |------|------|---------|-------|
-| Rusty | Lead | .squad/agents/rusty/charter.md | 🏗️ Lead |
-| Linus | Extension Dev | .squad/agents/linus/charter.md | 🔧 Extension |
-| Saul | UI Dev | .squad/agents/saul/charter.md | ⚛️ UI |
+| Reuben | Product Manager | .squad/agents/reuben/charter.md | 📝 PM |
+| Rusty | Architect | .squad/agents/rusty/charter.md | 🏗️ Architect |
+| Linus | Developer (Extension) | .squad/agents/linus/charter.md | 🔧 Developer |
+| Saul | Developer (UI) | .squad/agents/saul/charter.md | ⚛️ Developer |
+| Basher | Reviewer | .squad/agents/basher/charter.md | 🔎 Reviewer |
 | Livingston | Tester | .squad/agents/livingston/charter.md | 🧪 Tester |
 | Scribe | Session Logger | .squad/agents/scribe/charter.md | 📋 Scribe |
-| Ralph | Work Monitor | .squad/agents/ralph/charter.md | 🔄 Monitor |
 | Rai | RAI Reviewer | .squad/agents/Rai/charter.md | 🛡️ RAI |
 | Fact Checker | Fact Checker | .squad/agents/fact-checker/charter.md | 🔍 Verifier |
 

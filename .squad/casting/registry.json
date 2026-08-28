@@ -2,11 +2,31 @@
   "agents": {
     "rusty": {
       "persistent_name": "Rusty",
-      "role": "Lead",
+      "role": "Architect",
       "universe": "Ocean's Eleven",
       "folder": ".squad/agents/rusty",
       "charter": ".squad/agents/rusty/charter.md",
       "created_at": "2026-08-26T09:05:58+02:00",
+      "legacy_named": false,
+      "status": "active"
+    },
+    "reuben": {
+      "persistent_name": "Reuben",
+      "role": "Product Manager",
+      "universe": "Ocean's Eleven",
+      "folder": ".squad/agents/reuben",
+      "charter": ".squad/agents/reuben/charter.md",
+      "created_at": "2026-08-28T09:43:06+02:00",
+      "legacy_named": false,
+      "status": "active"
+    },
+    "basher": {
+      "persistent_name": "Basher",
+      "role": "Reviewer",
+      "universe": "Ocean's Eleven",
+      "folder": ".squad/agents/basher",
+      "charter": ".squad/agents/basher/charter.md",
+      "created_at": "2026-08-28T09:43:06+02:00",
       "legacy_named": false,
       "status": "active"
     },
@@ -54,11 +74,11 @@
       "persistent_name": "Ralph",
       "role": "Work Monitor",
       "universe": "builtin",
-      "folder": ".squad/agents/ralph",
-      "charter": ".squad/agents/ralph/charter.md",
+      "folder": ".squad/agents/_alumni/ralph",
+      "charter": ".squad/agents/_alumni/ralph/charter.md",
       "created_at": "2026-08-26T09:05:58+02:00",
       "legacy_named": false,
-      "status": "active"
+      "status": "retired"
     },
     "rai": {
       "persistent_name": "Rai",

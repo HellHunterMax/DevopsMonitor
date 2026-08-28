@@ -1,4 +1,20 @@
 {
-  "universe_usage_history": [],
-  "assignment_cast_snapshots": {}
+  "universe_usage_history": [
+    {
+      "date": "2026-08-28T09:43:06+02:00",
+      "universe": "Ocean's Eleven",
+      "event": "diegetic_expansion",
+      "reason": "Added Reuben (Product Manager) and Basher (Reviewer) to support PM/Architect/Developer/Reviewer/Tester role split for Spec Driven Development."
+    }
+  ],
+  "assignment_cast_snapshots": {
+    "2026-08-28T09:43:06+02:00": {
+      "rusty": "Architect",
+      "reuben": "Product Manager",
+      "linus": "Developer (Extension)",
+      "saul": "Developer (UI)",
+      "basher": "Reviewer",
+      "livingston": "Tester"
+    }
+  }
 }
