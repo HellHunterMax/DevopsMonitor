@@ -105,3 +105,44 @@ button:hover { background: #106ebe; }
   background: #fdf3f2;
   color: #c42b1c;
 }
+
+/* Poll status bar */
+.poll-status-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 14px;
+  background: #f5f5f5;
+  border-bottom: 1px solid #e0e0e0;
+  gap: 8px;
+}
+
+.poll-times {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+}
+
+.poll-times span {
+  font-size: 11px;
+  color: #555;
+  white-space: nowrap;
+}
+
+.poll-now-btn {
+  margin: 0;
+  width: auto;
+  padding: 4px 10px;
+  font-size: 11px;
+  background: #0078d4;
+  color: #fff;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.poll-now-btn:hover { background: #106ebe; }
+.poll-now-btn:disabled { background: #aaa; cursor: default; }

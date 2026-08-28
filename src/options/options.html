@@ -40,7 +40,66 @@
 
   <div id="result"></div>
 
+  <div class="divider"></div>
+  <div class="field">
+    <label>Notifications</label>
+    <button type="button" id="test-notif-btn">Send Test Notification</button>
+    <p class="field-hint">Sends a test notification to verify Windows notifications are working.</p>
+  </div>
+
   <p class="info-text">Polling interval: every 30 seconds</p>
+
+  <div class="divider"></div>
+  <h2>Storage Overview</h2>
+  <p class="info-text" style="margin-bottom:16px;">All data currently saved by the extension.</p>
+
+  <!-- Credentials -->
+  <div class="storage-section">
+    <div class="storage-section-header">
+      <span>🔑 Credentials</span>
+      <button type="button" id="clear-credentials-btn" class="danger-btn">Clear</button>
+    </div>
+    <table class="storage-table">
+      <thead><tr><th>Key</th><th>Value</th><th></th></tr></thead>
+      <tbody id="storage-creds-body"></tbody>
+    </table>
+  </div>
+
+  <!-- Monitored Pipelines -->
+  <div class="storage-section">
+    <div class="storage-section-header">
+      <span>⚙️ Monitored Pipelines</span>
+      <button type="button" id="clear-pipelines-btn" class="danger-btn">Clear All</button>
+    </div>
+    <table class="storage-table">
+      <thead><tr><th>Pipeline</th><th>Details</th><th></th></tr></thead>
+      <tbody id="storage-pipelines-body"></tbody>
+    </table>
+  </div>
+
+  <!-- Build Snapshots -->
+  <div class="storage-section">
+    <div class="storage-section-header">
+      <span>📸 Build Snapshots</span>
+      <button type="button" id="clear-snapshots-btn" class="danger-btn">Clear All</button>
+    </div>
+    <table class="storage-table">
+      <thead><tr><th>Pipeline</th><th>Snapshot</th><th></th></tr></thead>
+      <tbody id="storage-snapshots-body"></tbody>
+    </table>
+  </div>
+
+  <!-- Dismissed Builds -->
+  <div class="storage-section">
+    <div class="storage-section-header">
+      <span>🚫 Dismissed Builds</span>
+      <button type="button" id="clear-dismissed-btn" class="danger-btn">Clear All</button>
+    </div>
+    <table class="storage-table">
+      <thead><tr><th>Build ID</th><th></th></tr></thead>
+      <tbody id="storage-dismissed-body"></tbody>
+    </table>
+  </div>
 
   <script src="options.js"></script>
 </body>

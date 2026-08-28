@@ -13,6 +13,16 @@ async function saveNotificationMap(map: Record<string, StoredNotification>): Pro
   await chrome.storage.local.set({ notification_map: map });
 }
 
+export async function sendTestNotification(): Promise<void> {
+  chrome.notifications.create('devops-test-' + Date.now(), {
+    type: 'basic',
+    iconUrl: chrome.runtime.getURL('icons/icon48.png'),
+    title: '✅ DevOps Notifier',
+    message: 'Notifications are working correctly.',
+    priority: 2,
+  });
+}
+
 export async function sendNotification(
   id: string,
   title: string,
@@ -28,7 +38,7 @@ export async function sendNotification(
 
   chrome.notifications.create(id, {
     type: 'basic',
-    iconUrl: 'icons/icon48.png',
+    iconUrl: chrome.runtime.getURL('icons/icon48.png'),
     title,
     message,
     priority: 2,

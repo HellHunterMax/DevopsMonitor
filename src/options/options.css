@@ -104,4 +104,94 @@ button {
   display: block;
 }
 
+.divider { border-top: 1px solid #e0e0e0; margin: 20px 0; }
+.field-hint { font-size: 11px; color: #888; margin-top: 4px; }
 .info-text { font-size: 11px; color: #888; margin-top: 16px; text-align: center; }
+
+/* ── Storage Overview ───────────────────────────────────────────────────── */
+h2 {
+  font-size: 16px;
+  font-weight: 600;
+  color: #333;
+  margin-bottom: 4px;
+}
+
+.storage-section {
+  margin-bottom: 24px;
+}
+
+.storage-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+  font-weight: 600;
+  color: #444;
+  font-size: 13px;
+}
+
+.storage-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.storage-table th {
+  text-align: left;
+  padding: 6px 8px;
+  background: #f5f5f5;
+  border: 1px solid #e0e0e0;
+  font-weight: 600;
+  color: #555;
+}
+
+.storage-table td {
+  padding: 6px 8px;
+  border: 1px solid #e8e8e8;
+  vertical-align: middle;
+  word-break: break-all;
+}
+
+.storage-table tr:nth-child(even) td {
+  background: #fafafa;
+}
+
+.empty-row {
+  color: #aaa;
+  font-style: italic;
+}
+
+.mono {
+  font-family: 'Consolas', 'Cascadia Mono', monospace;
+  font-size: 11px;
+}
+
+.tbl-del-btn {
+  padding: 2px 8px;
+  font-size: 11px;
+  font-weight: 400;
+  background: #fff0f0;
+  color: #c53030;
+  border: 1px solid #fca5a5;
+  border-radius: 3px;
+  cursor: pointer;
+}
+
+.tbl-del-btn:hover {
+  background: #fee2e2;
+}
+
+.danger-btn {
+  padding: 4px 10px;
+  font-size: 12px;
+  font-weight: 500;
+  background: #fff0f0;
+  color: #c53030;
+  border: 1px solid #fca5a5;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.danger-btn:hover {
+  background: #fee2e2;
+}

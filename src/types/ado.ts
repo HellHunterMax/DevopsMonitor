@@ -27,9 +27,18 @@ export interface AdoTimelineRecord {
 export interface AdoApproval {
   id: string;
   status: string;       // "pending" | "approved" | "rejected"
-  pipeline: { id: number; name: string };
-  stage: { name: string };
-  createdDate: string;
+  pipeline: {
+    id: string;         // pipeline DEFINITION id (string) — NOT the build/run id
+    name: string;
+    owner: {            // the specific build run this approval gates
+      id: number;       // build run id (e.g. 450785)
+      name: string;
+    };
+  };
+  stage?: { name: string };
+  steps?: Array<{ assignedApprover?: { id: string; displayName: string }; status: string }>;
+  blockedApprovers?: Array<{ id: string; displayName: string }>;
+  createdOn: string;
 }
 
 export interface AdoListResponse<T> {

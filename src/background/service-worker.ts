@@ -1,5 +1,5 @@
 import { runPoll } from './poller';
-import { handleNotificationClick } from './notifier';
+import { handleNotificationClick, sendTestNotification } from './notifier';
 
 const ALARM_NAME = 'devops-poll';
 
@@ -27,4 +27,16 @@ chrome.alarms.onAlarm.addListener(alarm => {
 
 chrome.notifications.onClicked.addListener(notificationId => {
   handleNotificationClick(notificationId).catch(console.error);
+});
+
+// Handle messages from options/popup pages
+chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+  if (message.type === 'TEST_NOTIFICATION') {
+    sendTestNotification().then(() => sendResponse({ ok: true }));
+    return true; // keep channel open for async response
+  }
+  if (message.type === 'FORCE_POLL') {
+    runPoll().then(() => sendResponse({ ok: true })).catch(console.error);
+    return true;
+  }
 });

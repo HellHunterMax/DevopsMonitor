@@ -48,3 +48,14 @@ export async function undismissBuild(buildId: number): Promise<void> {
     [DISMISSED_BUILDS_KEY]: current.filter(id => id !== buildId),
   });
 }
+
+const LAST_POLLED_KEY = 'last_polled_at';
+
+export async function getLastPolledAt(): Promise<number | null> {
+  const result = await chrome.storage.local.get(LAST_POLLED_KEY);
+  return (result[LAST_POLLED_KEY] as number) ?? null;
+}
+
+export async function setLastPolledAt(ts: number): Promise<void> {
+  await chrome.storage.local.set({ [LAST_POLLED_KEY]: ts });
+}

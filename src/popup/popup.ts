@@ -6,10 +6,12 @@ import {
   getDismissedBuilds,
   dismissBuild,
   undismissBuild,
+  getLastPolledAt,
 } from '../utils/storage';
 import { AdoClient } from '../api/ado-client';
 import { getTimeline, getBuild } from '../api/pipelines';
 import { parseAdoBuildUrl } from '../utils/url-builder';
+import { clearSnapshot } from '../background/state';
 import type { PipelineConfig, StageConfig, BuildSnapshot } from '../types/ado';
 
 function setStatus(msg: string, type: 'info' | 'error' | 'success' = 'info'): void {
@@ -235,12 +237,16 @@ async function initContextFlow(pat: string): Promise<boolean> {
         pipelineId,
         pipelineName,
         stages: stageConfigs,
+        lastBuildId: ctx!.buildId,
       };
       const configs = await getPipelineConfigs();
       const idx = configs.findIndex(c => c.pipelineId === pipelineId && c.project === ctx!.project);
       if (idx >= 0) configs[idx] = newConfig;
       else configs.push(newConfig);
       await setPipelineConfigs(configs);
+      // Clear any stale snapshot for this pipeline so the first poll on the new
+      // build starts clean — prevents old approvalPending state suppressing notifications.
+      await clearSnapshot(pipelineId);
       renderStateA(pipelineName, ctx!.project, pipelineId, stageConfigs, async () => {
         const refreshed = await getPipelineConfigs();
         await setPipelineConfigs(refreshed.filter(c => !(c.pipelineId === pipelineId && c.project === ctx!.project)));
@@ -258,6 +264,12 @@ async function initContextFlow(pat: string): Promise<boolean> {
 }
 
 async function init(): Promise<void> {
+  // Wire gear icon regardless of credentials state
+  document.getElementById('options-link')?.addEventListener('click', (e) => {
+    e.preventDefault();
+    chrome.runtime.openOptionsPage();
+  });
+
   const creds = await getCredentials();
   if (!creds) {
     show('no-credentials');
@@ -268,6 +280,7 @@ async function init(): Promise<void> {
   }
 
   await renderAll();
+  await initPollStatusBar();
 
   const handled = await initContextFlow(creds.pat);
   if (!handled) {
@@ -276,3 +289,67 @@ async function init(): Promise<void> {
 }
 
 document.addEventListener('DOMContentLoaded', init);
+
+// ---------------------------------------------------------------------------
+// Poll status bar
+// ---------------------------------------------------------------------------
+
+const POLL_INTERVAL_MS = 30_000; // matches the 0.5-minute alarm in service-worker.ts
+
+function formatSecondsAgo(ms: number): string {
+  const secs = Math.floor((Date.now() - ms) / 1000);
+  if (secs < 5) return 'just now';
+  if (secs < 60) return `${secs}s ago`;
+  const mins = Math.floor(secs / 60);
+  return `${mins}m ${secs % 60}s ago`;
+}
+
+function updatePollStatusBar(lastPolledAt: number | null): void {
+  const lastEl = document.getElementById('poll-last')!;
+  const nextEl = document.getElementById('poll-next')!;
+
+  if (!lastPolledAt) {
+    lastEl.textContent = 'Last polled: never';
+    nextEl.textContent = 'Next: —';
+    return;
+  }
+
+  lastEl.textContent = `Last polled: ${formatSecondsAgo(lastPolledAt)}`;
+  const msSinceLast = Date.now() - lastPolledAt;
+  const msUntilNext = Math.max(0, POLL_INTERVAL_MS - msSinceLast);
+  const secsUntilNext = Math.ceil(msUntilNext / 1000);
+  nextEl.textContent = secsUntilNext <= 0 ? 'Next: any moment' : `Next: ~${secsUntilNext}s`;
+}
+
+async function initPollStatusBar(): Promise<void> {
+  const bar = document.getElementById('poll-status-bar')!;
+  bar.classList.remove('hidden');
+
+  let lastPolledAt = await getLastPolledAt();
+  updatePollStatusBar(lastPolledAt);
+
+  // Tick every second
+  const timer = setInterval(async () => {
+    lastPolledAt = await getLastPolledAt();
+    updatePollStatusBar(lastPolledAt);
+  }, 1000);
+
+  // Clean up on popup close
+  window.addEventListener('unload', () => clearInterval(timer));
+
+  // Poll Now button
+  const btn = document.getElementById('poll-now-btn') as HTMLButtonElement;
+  btn.addEventListener('click', async () => {
+    btn.disabled = true;
+    btn.textContent = 'Polling…';
+    try {
+      await chrome.runtime.sendMessage({ type: 'FORCE_POLL' });
+      lastPolledAt = await getLastPolledAt();
+      updatePollStatusBar(lastPolledAt);
+      await renderAll();
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'Poll Now';
+    }
+  });
+}

@@ -15,3 +15,8 @@ export async function saveSnapshot(snapshot: BuildSnapshot): Promise<void> {
   else all.push(snapshot);
   await setBuildSnapshots(all);
 }
+
+export async function clearSnapshot(pipelineId: number): Promise<void> {
+  const all = await getBuildSnapshots();
+  await setBuildSnapshots(all.filter(s => s.pipelineId !== pipelineId));
+}
