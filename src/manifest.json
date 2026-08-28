@@ -5,7 +5,6 @@
   "description": "Monitors Azure DevOps deployments and sends desktop notifications",
   "permissions": ["storage", "notifications", "alarms", "tabs"],
   "host_permissions": [
-    "https://vsrm.dev.azure.com/*",
     "https://dev.azure.com/*"
   ],
   "background": {

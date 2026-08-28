@@ -15,3 +15,5 @@
 📌 Team update (2026-08-26T11:00:22+02:00): PLAN.md updated with Phase 3 post-MVP ideas: auto-show popup setting and in-page Monitor button via content script.
 
 📌 Team update (2026-08-26T12:13:03+02:00): Critical bug fixed — manifest had "type": "module" causing service worker to never load. Removed. Polling and notifications now functional.
+
+📌 Team update (2026-08-28T13:34:01.027+02:00): Production-readiness review ended approved-for-scope after exact monitoring identity, popup XSS hardening, and supporting tests were in place.

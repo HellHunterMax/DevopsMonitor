@@ -4,7 +4,7 @@ import { getBuilds, getBuild, getTimeline } from '../api/pipelines';
 import { getPendingApprovals } from '../api/approvals';
 import { getSnapshot, saveSnapshot } from './state';
 import { sendNotification } from './notifier';
-import type { BuildSnapshot, StageSnapshot } from '../types/ado';
+import type { BuildSnapshot, MonitoringKey, StageSnapshot } from '../types/ado';
 
 export async function runPoll(): Promise<void> {
   const client = await createClient();
@@ -15,23 +15,44 @@ export async function runPoll(): Promise<void> {
 
   for (const config of configs) {
     try {
-      // Use the pinned build if set — always track it regardless of completion status.
-      // Never advance to a newer build automatically; the user chose this specific build.
-      // If no lastBuildId is set (legacy config), fall back to fetching the latest build.
-      let build: import('../types/ado').AdoBuild | null = null;
-      if (config.lastBuildId) {
+      const pinnedBuildId =
+        Number.isInteger(config.buildId) && config.buildId > 0 ? config.buildId : null;
+      const baseMonitoringKey = {
+        org: config.org,
+        project: config.project,
+        pipelineId: config.pipelineId,
+      };
+
+      let build: import('../types/ado').AdoBuild;
+      let snapshotKey: MonitoringKey;
+
+      if (pinnedBuildId !== null) {
+        snapshotKey = {
+          ...baseMonitoringKey,
+          buildId: pinnedBuildId,
+        };
+
         try {
-          build = await getBuild(client, config.project, config.lastBuildId);
-        } catch {
-          // If fetching the pinned build fails, fall through to latest as a safety net
+          build = await getBuild(client, config.project, pinnedBuildId);
+        } catch (err) {
+          console.warn(
+            `[DevOps Notifier] Pinned build ${pinnedBuildId} fetch failed; skipping poll cycle for pipeline ${config.pipelineId}:`,
+            err
+          );
+          continue;
         }
-      }
-      if (!build) {
+      } else {
+        // Legacy safety net for malformed pre-migration configs.
         const builds = await getBuilds(client, config.project, config.pipelineId, 1);
         if (builds.length === 0) continue;
         build = builds[0];
+        snapshotKey = {
+          ...baseMonitoringKey,
+          buildId: build.id,
+        };
       }
-      const snapshot = await getSnapshot(config.pipelineId);
+
+      const snapshot = await getSnapshot(snapshotKey);
 
       // Fetch timeline and approvals in parallel
       const [records, approvals] = await Promise.all([
@@ -89,8 +110,10 @@ export async function runPoll(): Promise<void> {
             );
           } else {
             // No stage info at all — any pending approval on this build means
-            // something is blocked; attribute it to every watched pending stage
-            approvalPending = stage.state === 'pending' || stage.state === 'inProgress';
+            // something is blocked. Only attribute it to stages that are actually
+            // waiting (state === 'pending'); a stage that is already 'inProgress'
+            // is actively running/deploying, not blocked on approval.
+            approvalPending = stage.state === 'pending';
           }
         }
 
@@ -119,7 +142,7 @@ export async function runPoll(): Promise<void> {
         if (stageConfig.notifyOnComplete && stage.state === 'completed') {
           const prevCompleted = prevStage?.state === 'completed' && prevStage?.result === stage.result;
           if (!prevCompleted && stage.result) {
-            const icon = stage.result === 'succeeded' ? 'OK' : stage.result === 'failed' ? 'FAIL' : 'WARN';
+            const icon = stage.result === 'succeeded' ? '✅' : stage.result === 'failed' ? '❌' : '⚠️';
             await sendNotification(
               `${notifId}-complete`,
               `${icon} ${config.pipelineName}`,
@@ -145,8 +168,10 @@ export async function runPoll(): Promise<void> {
       }
 
       const newSnapshot: BuildSnapshot = {
-        pipelineId: config.pipelineId,
-        buildId: build.id,
+        org: snapshotKey.org,
+        project: snapshotKey.project,
+        pipelineId: snapshotKey.pipelineId,
+        buildId: snapshotKey.buildId,
         stages: newStages,
       };
       await saveSnapshot(newSnapshot);

@@ -18,3 +18,5 @@
 📌 2026-08-26: build.buildNumber in ADO YAML pipelines is the pipeline name format (e.g. "Adapter.Msf"), not a numeric ID. Always use build.id (numeric) when showing "Build #N" to the user.
 
 📌 2026-08-26: Popup has three context-aware states: A (monitoring active), B (dismissed), C (stage picker). dismissed_builds stored as number[] in chrome.storage.local.
+
+📌 Team update (2026-08-28T13:34:01.027+02:00): Fixed the pinned-build failure drift so the poller preserves monitored identity and skips the cycle instead of substituting another build.

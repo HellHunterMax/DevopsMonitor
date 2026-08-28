@@ -7,12 +7,20 @@ import {
   dismissBuild,
   undismissBuild,
   getLastPolledAt,
+  normalizeAdoOrgUrl,
+  normalizeOrgSlug,
 } from '../utils/storage';
 import { AdoClient } from '../api/ado-client';
 import { getTimeline, getBuild } from '../api/pipelines';
 import { parseAdoBuildUrl } from '../utils/url-builder';
 import { clearSnapshot } from '../background/state';
-import type { PipelineConfig, StageConfig, BuildSnapshot } from '../types/ado';
+import {
+  monitoringKeyEquals,
+  type BuildSnapshot,
+  type MonitoringKey,
+  type PipelineConfig,
+  type StageConfig,
+} from '../types/ado';
 
 function setStatus(msg: string, type: 'info' | 'error' | 'success' = 'info'): void {
   const el = document.getElementById('status')!;
@@ -22,37 +30,99 @@ function setStatus(msg: string, type: 'info' | 'error' | 'success' = 'info'): vo
 
 function show(id: string): void { document.getElementById(id)?.classList.remove('hidden'); }
 
+function clear(el: Element): void {
+  el.replaceChildren();
+}
+
+function textEl<K extends keyof HTMLElementTagNameMap>(
+  tagName: K,
+  className: string,
+  text: string
+): HTMLElementTagNameMap[K] {
+  const el = document.createElement(tagName);
+  el.className = className;
+  el.textContent = text;
+  return el;
+}
+
+function buildMonitoringKey(config: PipelineConfig): MonitoringKey {
+  return {
+    org: config.org,
+    project: config.project,
+    pipelineId: config.pipelineId,
+    buildId: config.buildId,
+  };
+}
+
+function appendStrongLeadLine(
+  container: HTMLElement,
+  className: string,
+  strongText: string,
+  suffixText: string
+): void {
+  const line = document.createElement('div');
+  line.className = className;
+
+  const strong = document.createElement('strong');
+  strong.textContent = strongText;
+
+  line.append(strong, suffixText);
+  container.appendChild(line);
+}
+
+function getOrgLabel(orgUrl: string): string {
+  try {
+    const org = new URL(orgUrl).pathname.split('/').filter(Boolean)[0];
+    return org ? decodeURIComponent(org) : orgUrl;
+  } catch {
+    return orgUrl;
+  }
+}
+
 function renderMonitoredList(configs: PipelineConfig[], snapshots: BuildSnapshot[]): void {
   const container = document.getElementById('pipeline-list')!;
-  container.innerHTML = '';
+  clear(container);
+
   if (configs.length === 0) {
-    container.innerHTML = '<p style="color:#999;font-size:12px;">Open a pipeline build page in Azure DevOps to add monitoring.</p>';
+    const empty = document.createElement('p');
+    empty.style.color = '#999';
+    empty.style.fontSize = '12px';
+    empty.textContent = 'Open a pipeline build page in Azure DevOps to add monitoring.';
+    container.appendChild(empty);
     return;
   }
+
   for (const config of configs) {
-    const snapshot = snapshots.find(s => s.pipelineId === config.pipelineId);
+    const configKey = buildMonitoringKey(config);
+    const snapshot = snapshots.find(s => monitoringKeyEquals(s, configKey));
     const watchedStages = config.stages.map(s => s.stageName).join(', ');
     const buildInfo = snapshot ? `Build #${snapshot.buildId}` : 'No build tracked yet';
+
     const item = document.createElement('div');
     item.className = 'pipeline-item';
-    item.innerHTML = `
-      <div>
-        <div class="pipeline-name">${config.pipelineName}</div>
-        <div class="stage-status">${config.project} · ${buildInfo}</div>
-        <div class="stage-status">Watching: ${watchedStages || 'none'}</div>
-      </div>
-      <button class="remove-btn" data-id="${config.pipelineId}" title="Stop monitoring">&#x2715;</button>
-    `;
-    container.appendChild(item);
-  }
-  container.querySelectorAll<HTMLElement>('.remove-btn').forEach(btn => {
-    btn.addEventListener('click', async () => {
-      const id = Number(btn.dataset.id);
+
+    const details = document.createElement('div');
+    details.append(
+      textEl('div', 'pipeline-name', config.pipelineName),
+      textEl('div', 'stage-status', `${config.project} · ${buildInfo}`),
+      textEl('div', 'stage-status', `Watching: ${watchedStages || 'none'}`)
+    );
+
+    const removeBtn = document.createElement('button');
+    removeBtn.className = 'remove-btn';
+    removeBtn.title = 'Stop monitoring';
+    removeBtn.textContent = '✕';
+    removeBtn.addEventListener('click', async () => {
       const all = await getPipelineConfigs();
-      await setPipelineConfigs(all.filter(c => c.pipelineId !== id));
+      await setPipelineConfigs(
+        all.filter(c => !monitoringKeyEquals(c, configKey))
+      );
       await renderAll();
     });
-  });
+
+    item.append(details, removeBtn);
+    container.appendChild(item);
+  }
 }
 
 async function renderAll(): Promise<void> {
@@ -64,23 +134,37 @@ async function renderAll(): Promise<void> {
   show('monitored');
 }
 
-// Renders State A: already monitoring this pipeline
+function renderContextMessage(title: string, message: string, detail?: string): void {
+  const header = document.getElementById('ctx-pipeline-header')!;
+  clear(header);
+  header.appendChild(textEl('div', 'ctx-pipeline-name', title));
+
+  const body = document.getElementById('ctx-body')!;
+  clear(body);
+  body.appendChild(textEl('div', 'ctx-already', message));
+
+  if (detail) {
+    body.appendChild(textEl('div', 'ctx-watching', detail));
+  }
+}
+
+// Renders State A: already monitoring this build
 function renderStateA(
   pipelineName: string,
   project: string,
-  pipelineId: number,
   stages: StageConfig[],
   onStop: () => void
 ): void {
   const header = document.getElementById('ctx-pipeline-header')!;
-  header.innerHTML = `<div class="ctx-pipeline-name">&#x2705; Monitoring active</div>`;
+  clear(header);
+  header.appendChild(textEl('div', 'ctx-pipeline-name', '✅ Monitoring active'));
 
   const body = document.getElementById('ctx-body')!;
+  clear(body);
   const watchedStages = stages.map(s => s.stageName).join(', ');
-  body.innerHTML = `
-    <div class="ctx-already"><strong>${pipelineName}</strong> &middot; ${project}</div>
-    <div class="ctx-watching">Watching: ${watchedStages || 'none'}</div>
-  `;
+
+  appendStrongLeadLine(body, 'ctx-already', pipelineName, ` · ${project}`);
+  body.appendChild(textEl('div', 'ctx-watching', `Watching: ${watchedStages || 'none'}`));
 
   const stopBtn = document.createElement('button');
   stopBtn.className = 'btn-secondary';
@@ -92,21 +176,21 @@ function renderStateA(
 // Renders State B: build dismissed
 function renderStateB(
   pipelineName: string,
-  buildId: number,
+  monitoringKey: MonitoringKey,
   onMonitor: () => void
 ): void {
   const header = document.getElementById('ctx-pipeline-header')!;
-  header.innerHTML = `<div class="ctx-pipeline-name">&#x1F6AB; Not monitoring this build</div>`;
+  clear(header);
+  header.appendChild(textEl('div', 'ctx-pipeline-name', '🚫 Not monitoring this build'));
 
   const body = document.getElementById('ctx-body')!;
-  body.innerHTML = `
-    <div class="ctx-already"><strong>${pipelineName}</strong> &middot; Build #${buildId}</div>
-  `;
+  clear(body);
+  appendStrongLeadLine(body, 'ctx-already', pipelineName, ` · Build #${monitoringKey.buildId}`);
 
   const monitorBtn = document.createElement('button');
   monitorBtn.textContent = 'Monitor this build';
   monitorBtn.addEventListener('click', async () => {
-    await undismissBuild(buildId);
+    await undismissBuild(monitoringKey);
     onMonitor();
   });
   body.appendChild(monitorBtn);
@@ -117,17 +201,22 @@ function renderStateC(
   pipelineName: string,
   branch: string,
   stages: string[],
-  buildId: number,
+  monitoringKey: MonitoringKey,
   onSave: (selectedStages: string[]) => void
 ): void {
   const header = document.getElementById('ctx-pipeline-header')!;
-  header.innerHTML = `
-    <div class="ctx-pipeline-name">${pipelineName}</div>
-    <div class="ctx-branch">Branch: ${branch}</div>
-  `;
+  clear(header);
+  header.append(
+    textEl('div', 'ctx-pipeline-name', pipelineName),
+    textEl('div', 'ctx-branch', `Branch: ${branch}`)
+  );
 
   const body = document.getElementById('ctx-body')!;
-  body.innerHTML = '<p class="section-label" style="margin-top:8px;">Select stages to monitor:</p>';
+  clear(body);
+
+  const label = textEl('p', 'section-label', 'Select stages to monitor:');
+  label.style.marginTop = '8px';
+  body.appendChild(label);
 
   const pills = document.createElement('div');
   pills.className = 'stage-pills';
@@ -161,13 +250,13 @@ function renderStateC(
   dismissBtn.className = 'btn-secondary';
   dismissBtn.textContent = "Don't monitor this build";
   dismissBtn.addEventListener('click', async () => {
-    await dismissBuild(buildId);
+    await dismissBuild(monitoringKey);
     window.close();
   });
   body.appendChild(dismissBtn);
 }
 
-async function initContextFlow(pat: string): Promise<boolean> {
+async function initContextFlow(credentials: { orgUrl: string; pat: string }): Promise<boolean> {
   const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
   const tabUrl = tabs[0]?.url ?? '';
   const ctx = parseAdoBuildUrl(tabUrl);
@@ -175,8 +264,32 @@ async function initContextFlow(pat: string): Promise<boolean> {
 
   console.log('[DevOps Notifier] Detected ADO build page:', ctx);
 
-  // Use orgUrl from the tab URL + stored PAT — avoids stored orgUrl mismatch
-  const client = new AdoClient(ctx.orgUrl, pat);
+  const configuredOrgUrl = normalizeAdoOrgUrl(credentials.orgUrl);
+  const activeOrgUrl = normalizeAdoOrgUrl(ctx.orgUrl);
+
+  if (!configuredOrgUrl) {
+    show('context-monitor');
+    setStatus('');
+    renderContextMessage(
+      '🚫 Monitoring unavailable',
+      'DevopsMonitor’s configured org URL is invalid.',
+      'Open Options and save a valid Azure DevOps org before monitoring this build.'
+    );
+    return true;
+  }
+
+  if (!activeOrgUrl || configuredOrgUrl !== activeOrgUrl) {
+    show('context-monitor');
+    setStatus('');
+    renderContextMessage(
+      '🚫 Wrong Azure DevOps org',
+      `This page belongs to org ${ctx.org}, but DevopsMonitor is configured for ${getOrgLabel(configuredOrgUrl)}.`,
+      'Switch to the configured org or update Options.'
+    );
+    return true;
+  }
+
+  const client = new AdoClient(configuredOrgUrl, credentials.pat);
 
   setStatus('Loading build info...');
   try {
@@ -195,34 +308,42 @@ async function initContextFlow(pat: string): Promise<boolean> {
     const pipelineId = build.definition.id;
     const pipelineName = build.definition.name;
     const branch = build.sourceBranch.replace('refs/heads/', '');
+    const monitoringKey: MonitoringKey = {
+      org: normalizeOrgSlug(ctx.org),
+      project: ctx.project,
+      pipelineId,
+      buildId: ctx.buildId,
+    };
 
     const [allConfigs, dismissedBuilds] = await Promise.all([
       getPipelineConfigs(),
       getDismissedBuilds(),
     ]);
 
-    const existing = allConfigs.find(c => c.pipelineId === pipelineId && c.project === ctx.project);
-    const isDismissed = dismissedBuilds.includes(ctx.buildId);
+    const existing = allConfigs.find(config => monitoringKeyEquals(config, monitoringKey));
+    const isDismissed = dismissedBuilds.some(key => monitoringKeyEquals(key, monitoringKey));
 
     show('context-monitor');
     setStatus('');
 
     if (existing) {
       // State A: already monitoring
-      renderStateA(pipelineName, ctx.project, pipelineId, existing.stages, async () => {
+      renderStateA(pipelineName, ctx.project, existing.stages, async () => {
         const configs = await getPipelineConfigs();
-        await setPipelineConfigs(configs.filter(c => !(c.pipelineId === pipelineId && c.project === ctx.project)));
+        await setPipelineConfigs(
+          configs.filter(c => !monitoringKeyEquals(c, monitoringKey))
+        );
         await renderAll();
-        renderStateC(pipelineName, branch, stages, ctx.buildId, saveAndShowStateA);
+        renderStateC(pipelineName, branch, stages, monitoringKey, saveAndShowStateA);
       });
     } else if (isDismissed) {
       // State B: dismissed
-      renderStateB(pipelineName, ctx.buildId, () => {
-        renderStateC(pipelineName, branch, stages, ctx.buildId, saveAndShowStateA);
+      renderStateB(pipelineName, monitoringKey, () => {
+        renderStateC(pipelineName, branch, stages, monitoringKey, saveAndShowStateA);
       });
     } else {
       // State C: picker
-      renderStateC(pipelineName, branch, stages, ctx.buildId, saveAndShowStateA);
+      renderStateC(pipelineName, branch, stages, monitoringKey, saveAndShowStateA);
     }
 
     async function saveAndShowStateA(selectedStages: string[]): Promise<void> {
@@ -232,26 +353,26 @@ async function initContextFlow(pat: string): Promise<boolean> {
         notifyOnApprovalNeeded: true,
       }));
       const newConfig: PipelineConfig = {
-        org: ctx!.org,
-        project: ctx!.project,
-        pipelineId,
+        ...monitoringKey,
         pipelineName,
         stages: stageConfigs,
-        lastBuildId: ctx!.buildId,
       };
       const configs = await getPipelineConfigs();
-      const idx = configs.findIndex(c => c.pipelineId === pipelineId && c.project === ctx!.project);
+      const idx = configs.findIndex(config => monitoringKeyEquals(config, monitoringKey));
+      const previousConfig = idx >= 0 ? configs[idx] : null;
       if (idx >= 0) configs[idx] = newConfig;
       else configs.push(newConfig);
       await setPipelineConfigs(configs);
-      // Clear any stale snapshot for this pipeline so the first poll on the new
+      // Clear any stale snapshot for this monitored build so the first poll on the new
       // build starts clean — prevents old approvalPending state suppressing notifications.
-      await clearSnapshot(pipelineId);
-      renderStateA(pipelineName, ctx!.project, pipelineId, stageConfigs, async () => {
+      await clearSnapshot(previousConfig ?? monitoringKey);
+      renderStateA(pipelineName, ctx!.project, stageConfigs, async () => {
         const refreshed = await getPipelineConfigs();
-        await setPipelineConfigs(refreshed.filter(c => !(c.pipelineId === pipelineId && c.project === ctx!.project)));
+        await setPipelineConfigs(
+          refreshed.filter(c => !monitoringKeyEquals(c, monitoringKey))
+        );
         await renderAll();
-        renderStateC(pipelineName, branch, stages, ctx!.buildId, saveAndShowStateA);
+        renderStateC(pipelineName, branch, stages, monitoringKey, saveAndShowStateA);
       });
       await renderAll();
     }
@@ -263,7 +384,7 @@ async function initContextFlow(pat: string): Promise<boolean> {
   }
 }
 
-async function init(): Promise<void> {
+export async function init(): Promise<void> {
   // Wire gear icon regardless of credentials state
   document.getElementById('options-link')?.addEventListener('click', (e) => {
     e.preventDefault();
@@ -282,7 +403,7 @@ async function init(): Promise<void> {
   await renderAll();
   await initPollStatusBar();
 
-  const handled = await initContextFlow(creds.pat);
+  const handled = await initContextFlow(creds);
   if (!handled) {
     setStatus('');
   }

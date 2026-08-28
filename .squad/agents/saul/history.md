@@ -14,3 +14,5 @@
 📌 2026-08-26: "None" checkbox replaced with "Don't monitor this build" button. Cleaner intent — it's a decision, not a selection.
 
 📌 2026-08-26: Primary colour is Azure blue #0078d4. Secondary/destructive action uses #c42b1c with btn-secondary class.
+
+📌 Team update (2026-08-28T13:34:01.027+02:00): Popup production blockers closed with XSS-safe literal rendering and state semantics aligned to exact monitored-build identity.

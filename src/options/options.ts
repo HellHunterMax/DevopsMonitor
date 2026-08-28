@@ -8,7 +8,7 @@ import {
   getDismissedBuilds,
 } from '../utils/storage';
 import { AdoClient } from '../api/ado-client';
-import type { AdoListResponse, AdoProject } from '../types/ado';
+import { monitoringKeyToString, type AdoListResponse, type AdoProject } from '../types/ado';
 
 function getEl<T extends HTMLElement>(id: string): T {
   return document.getElementById(id) as T;
@@ -58,11 +58,12 @@ async function renderStorageOverview(): Promise<void> {
   } else {
     for (const p of pipelines) {
       const tr = document.createElement('tr');
+      const key = encodeURIComponent(monitoringKeyToString(p));
       tr.innerHTML = `
         <td>${escHtml(p.pipelineName)}</td>
-        <td class="mono">${escHtml(p.project)} · #${p.pipelineId}${p.lastBuildId ? ` · last build ${p.lastBuildId}` : ''}</td>
+        <td class="mono">${escHtml(p.org)} · ${escHtml(p.project)} · #${p.pipelineId} · build ${p.buildId}</td>
         <td>
-          <button class="tbl-del-btn" data-type="pipeline" data-id="${p.pipelineId}" data-project="${escHtml(p.project)}" title="Remove">✕</button>
+          <button class="tbl-del-btn" data-type="pipeline" data-key="${key}" title="Remove">✕</button>
         </td>
       `;
       pipBody.appendChild(tr);
@@ -78,11 +79,12 @@ async function renderStorageOverview(): Promise<void> {
     for (const s of snapshots) {
       const stageNames = Object.keys(s.stages).join(', ') || '—';
       const tr = document.createElement('tr');
+      const key = encodeURIComponent(monitoringKeyToString(s));
       tr.innerHTML = `
-        <td>Pipeline ${s.pipelineId}</td>
+        <td>${escHtml(s.org)} · ${escHtml(s.project)} · Pipeline ${s.pipelineId}</td>
         <td class="mono">Build #${s.buildId} · ${escHtml(stageNames)}</td>
         <td>
-          <button class="tbl-del-btn" data-type="snapshot" data-id="${s.pipelineId}" title="Remove">✕</button>
+          <button class="tbl-del-btn" data-type="snapshot" data-key="${key}" title="Remove">✕</button>
         </td>
       `;
       snapBody.appendChild(tr);
@@ -95,12 +97,13 @@ async function renderStorageOverview(): Promise<void> {
   if (dismissed.length === 0) {
     dismBody.innerHTML = '<tr><td colspan="2" class="empty-row">No dismissed builds</td></tr>';
   } else {
-    for (const id of dismissed) {
+    for (const key of dismissed) {
       const tr = document.createElement('tr');
+      const serializedKey = encodeURIComponent(monitoringKeyToString(key));
       tr.innerHTML = `
-        <td class="mono">Build #${id}</td>
+        <td class="mono">${escHtml(key.org)} · ${escHtml(key.project)} · #${key.pipelineId} · build ${key.buildId}</td>
         <td>
-          <button class="tbl-del-btn" data-type="dismissed" data-id="${id}" title="Remove">✕</button>
+          <button class="tbl-del-btn" data-type="dismissed" data-key="${serializedKey}" title="Remove">✕</button>
         </td>
       `;
       dismBody.appendChild(tr);
@@ -111,17 +114,18 @@ async function renderStorageOverview(): Promise<void> {
   document.querySelectorAll<HTMLButtonElement>('.tbl-del-btn').forEach(btn => {
     btn.addEventListener('click', async () => {
       const type = btn.dataset.type;
-      const id = Number(btn.dataset.id);
+      const key = decodeURIComponent(btn.dataset.key ?? '');
       if (type === 'pipeline') {
-        const project = btn.dataset.project ?? '';
         const all = await getPipelineConfigs();
-        await setPipelineConfigs(all.filter(p => !(p.pipelineId === id && p.project === project)));
+        await setPipelineConfigs(all.filter(p => monitoringKeyToString(p) !== key));
       } else if (type === 'snapshot') {
         const all = await getBuildSnapshots();
-        await setBuildSnapshots(all.filter(s => s.pipelineId !== id));
+        await setBuildSnapshots(all.filter(s => monitoringKeyToString(s) !== key));
       } else if (type === 'dismissed') {
         const all = await getDismissedBuilds();
-        await chrome.storage.local.set({ dismissed_builds: all.filter(b => b !== id) });
+        await chrome.storage.local.set({
+          dismissed_builds: all.filter(item => monitoringKeyToString(item) !== key),
+        });
       }
       await renderStorageOverview();
     });

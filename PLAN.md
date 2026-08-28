@@ -8,7 +8,7 @@
 
 ## Current State (as built)
 
-The original plan targeted Classic Release pipelines with an in-popup picker. The implementation pivoted to **YAML/Build pipelines** with a **context-aware popup** that reads the current tab URL instead of fetching a pipeline list. This document reflects what was actually built.
+The extension monitors **YAML/Build pipelines** via a **context-aware popup** that detects the current tab's pipeline context from the Azure DevOps URL.
 
 ---
 
@@ -37,11 +37,12 @@ All state lives in **`chrome.storage.local`** (device-local, not synced):
 
 | Key | Contents |
 |---|---|
-| `pat` | Personal Access Token |
-| `orgUrl` | ADO org URL (e.g. `https://dev.azure.com/myorg`) |
+| `ado_pat` | Personal Access Token |
+| `ado_org_url` | ADO org URL (e.g. `https://dev.azure.com/myorg`) |
 | `pipeline_configs` | Array of `PipelineConfig` — one per monitored build, with `StageConfig[]` |
 | `build_snapshots` | Last-known stage statuses per buildId, used for change detection |
 | `dismissed_builds` | Set of buildIds the user explicitly chose not to monitor |
+| `last_polled_at` | Timestamp of the most recent completed poll cycle |
 
 ---
 
@@ -59,8 +60,6 @@ Required PAT scopes: **Build (read)**, **Environments (read)**
 | Fetch latest build for a pipeline | `GET /_apis/build/builds?definitions={id}&$top=1` |
 | Fetch build timeline (stages + status) | `GET /_apis/build/builds/{buildId}/timeline` |
 | Fetch pending approvals | `GET /_apis/pipelines/approvals?state=pending` *(fails silently if unavailable)* |
-
-> Classic Release pipelines (`vsrm.dev.azure.com`) were dropped. YAML/Build pipelines only.
 
 ---
 
@@ -135,14 +134,13 @@ src/
 │   └── options.css
 ├── api/
 │   ├── ado-client.ts                # Base HTTP client; attaches PAT auth, handles errors
-│   ├── builds.ts                    # GET /build/builds — single build, latest for definition
-│   ├── timeline.ts                  # GET /build/builds/{id}/timeline — stages + status
-│   └── approvals.ts                 # GET /pipelines/approvals?state=pending
+│   ├── approvals.ts                 # Fetches pending pipeline approvals; degrades gracefully if API is unavailable
+│   └── pipelines.ts                 # Fetches builds, individual build details, and build timeline records
 ├── types/
 │   └── ado.ts                       # TypeScript interfaces: Build, TimelineRecord, Approval, PipelineConfig, StageConfig
 └── utils/
     ├── storage.ts                   # Typed helpers for chrome.storage.local
-    └── url-parser.ts                # Parses org/project/buildId from ADO tab URLs
+    └── url-builder.ts               # Builds ADO deep-links and parses build-page context from ADO URLs
 ```
 
 **Build tooling (repo root):**
@@ -160,7 +158,7 @@ dist/                      # Build output — load as unpacked extension in Chro
 ### Phase 1 — MVP ✅ Done
 
 - Manifest V3: service worker, popup, options page
-- YAML/Build pipeline monitoring (Classic Releases dropped)
+- YAML/Build pipeline monitoring
 - `chrome.alarms`-based polling every 30 seconds
 - Context-aware popup: parses build URL → State A / B / C
 - Stage pill selector — user picks which stages to watch

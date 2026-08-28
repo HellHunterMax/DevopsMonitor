@@ -1,0 +1,97 @@
+import type { BuildSnapshot, MonitoringKey, PipelineConfig } from '../types/ado';
+
+const BASE_KEY: MonitoringKey = {
+  org: 'my-org',
+  project: 'My Project',
+  pipelineId: 12,
+  buildId: 34,
+};
+
+const BASE_CONFIG: PipelineConfig = {
+  ...BASE_KEY,
+  pipelineName: 'Deploy',
+  stages: [
+    {
+      stageName: 'Prod',
+      notifyOnComplete: true,
+      notifyOnApprovalNeeded: true,
+    },
+  ],
+};
+
+const BASE_SNAPSHOT: BuildSnapshot = {
+  ...BASE_KEY,
+  stages: {
+    Prod: {
+      state: 'completed',
+      result: 'succeeded',
+      approvalPending: false,
+    },
+  },
+};
+
+async function loadStorageModule() {
+  jest.resetModules();
+  return import('./storage');
+}
+
+describe('storage utils', () => {
+  it('reads and writes credentials', async () => {
+    const storage = await loadStorageModule();
+
+    await storage.saveCredentials('https://dev.azure.com/My-Org/', 'secret');
+
+    await expect(storage.getCredentials()).resolves.toEqual({
+      orgUrl: 'https://dev.azure.com/my-org',
+      pat: 'secret',
+    });
+  });
+
+  it('reads and writes pipeline configs', async () => {
+    const storage = await loadStorageModule();
+
+    await storage.setPipelineConfigs([BASE_CONFIG]);
+
+    await expect(storage.getPipelineConfigs()).resolves.toEqual([BASE_CONFIG]);
+  });
+
+  it('reads and writes build snapshots', async () => {
+    const storage = await loadStorageModule();
+    await storage.setPipelineConfigs([BASE_CONFIG]);
+
+    await storage.setBuildSnapshots([BASE_SNAPSHOT]);
+
+    await expect(storage.getBuildSnapshots()).resolves.toEqual([BASE_SNAPSHOT]);
+  });
+
+  it('dismisses and undismisses builds using the composite monitoring key', async () => {
+    const storage = await loadStorageModule();
+
+    await storage.dismissBuild(BASE_KEY);
+    await storage.dismissBuild(BASE_KEY);
+    expect(await storage.getDismissedBuilds()).toEqual([BASE_KEY]);
+
+    await storage.undismissBuild(BASE_KEY);
+    expect(await storage.getDismissedBuilds()).toEqual([]);
+  });
+
+  it('returns defaults when keys are missing', async () => {
+    const storage = await loadStorageModule();
+
+    await expect(storage.getCredentials()).resolves.toBeNull();
+    await expect(storage.getPipelineConfigs()).resolves.toEqual([]);
+    await expect(storage.getBuildSnapshots()).resolves.toEqual([]);
+    await expect(storage.getDismissedBuilds()).resolves.toEqual([]);
+    await expect(storage.getLastPolledAt()).resolves.toBeNull();
+  });
+
+  it('propagates rejected chrome.storage.local calls', async () => {
+    const storage = await loadStorageModule();
+
+    (chrome.storage.local.get as jest.Mock).mockRejectedValueOnce(new Error('get failed'));
+    await expect(storage.getCredentials()).rejects.toThrow('get failed');
+
+    (chrome.storage.local.set as jest.Mock).mockRejectedValueOnce(new Error('set failed'));
+    await expect(storage.saveCredentials('https://dev.azure.com/my-org', 'secret')).rejects.toThrow('set failed');
+  });
+});

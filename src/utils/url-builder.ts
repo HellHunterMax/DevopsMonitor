@@ -1,5 +1,5 @@
 export function buildBuildUrl(orgUrl: string, project: string, buildId: number): string {
-  return `${orgUrl}/${project}/_build/results?buildId=${buildId}`;
+  return `${orgUrl.replace(/\/+$/, '')}/${encodeURIComponent(project)}/_build/results?buildId=${buildId}`;
 }
 
 export interface AdoBuildPageContext {
