@@ -20,3 +20,7 @@
 📌 2026-08-26: Popup has three context-aware states: A (monitoring active), B (dismissed), C (stage picker). dismissed_builds stored as number[] in chrome.storage.local.
 
 📌 Team update (2026-08-28T13:34:01.027+02:00): Fixed the pinned-build failure drift so the poller preserves monitored identity and skips the cycle instead of substituting another build.
+
+📌 Team update (2026-09-01T09:16:00+02:00): Authored the first approval-notification false-positive fix by removing the timeline-only fallback and introducing next-up pending-stage attribution; Basher rejected the revision for same-order parallel-stage ordering, which locked Linus out from revising that artifact further.
+
+📌 Team update (2026-09-04T14:48:51.712+02:00): Removed pre-1.0 storage-schema migration/back-compat code, deleted the poller's malformed-config/latest-build fallback path, and removed the unused getBuilds API helper after confirming the repo no longer needs legacy compatibility.

@@ -17,3 +17,5 @@
 📌 Team update (2026-08-26T12:13:03+02:00): Critical bug fixed — manifest had "type": "module" causing service worker to never load. Removed. Polling and notifications now functional.
 
 📌 Team update (2026-08-28T13:34:01.027+02:00): Production-readiness review ended approved-for-scope after exact monitoring identity, popup XSS hardening, and supporting tests were in place.
+
+📌 Team update (2026-09-01T09:16:00+02:00): Took revision ownership after Linus was locked out, fixed next-up approval attribution to respect same-order parallel stages, and was then locked out too when Basher found a remaining mixed named + stage-less approval bug.

@@ -257,7 +257,7 @@ describe('background poller', () => {
     );
   });
 
-  it('falls back to pending timeline state when the approvals API returns no matches', async () => {
+  it('does not treat pending timeline state as approval when the approvals API returns no matches', async () => {
     const { storage, poller } = await loadModules();
     await storage.saveCredentials(ORG_URL, 'secret');
     await storage.setPipelineConfigs([createConfig()]);
@@ -272,13 +272,10 @@ describe('background poller', () => {
 
     await poller.runPoll();
 
-    expect(chrome.notifications.create).toHaveBeenCalledWith(
-      `${PIPELINE_ID}-${BUILD_ID}-Prod-approval`,
-      expect.any(Object)
-    );
+    expect(chrome.notifications.create).not.toHaveBeenCalled();
   });
 
-  it('does not treat an actively deploying (inProgress) stage as needing approval when a later stage is pending', async () => {
+  it('does not infer a stage-less approval while an earlier stage is still in progress', async () => {
     const { storage, poller } = await loadModules();
     await storage.saveCredentials(ORG_URL, 'secret');
     await storage.setPipelineConfigs([
@@ -300,7 +297,72 @@ describe('background poller', () => {
             createStage({ id: 'stage-2', name: 'Acceptance', state: 'pending', result: undefined, order: 2 }),
           ],
         }),
-      // Stage-less approval payload — the ambiguous case the fallback heuristic handles.
+      // Stage-less approval payload — do not attribute it to a future stage when an earlier
+      // stage is still running, because that future stage is not actually "next up" yet.
+      [`/${PROJECT}/_apis/pipelines/approvals?`]: () => jsonResponse({ value: [createApproval()] }),
+    });
+
+    await poller.runPoll();
+
+    expect(chrome.notifications.create).not.toHaveBeenCalled();
+  });
+
+  it('does not notify for downstream pending stages in a normal sequential build with zero approvals', async () => {
+    const { storage, poller } = await loadModules();
+    await storage.saveCredentials(ORG_URL, 'secret');
+    await storage.setPipelineConfigs([
+      createConfig({
+        stages: [
+          { stageName: 'Build', notifyOnComplete: true, notifyOnApprovalNeeded: true },
+          { stageName: 'Run tests', notifyOnComplete: true, notifyOnApprovalNeeded: true },
+          { stageName: 'Prod', notifyOnComplete: true, notifyOnApprovalNeeded: true },
+        ],
+      }),
+    ]);
+
+    installFetchMap({
+      [`/${PROJECT}/_apis/build/builds/${BUILD_ID}?`]: () =>
+        jsonResponse(createBuild({ status: 'inProgress', result: undefined })),
+      [`/${PROJECT}/_apis/build/builds/${BUILD_ID}/timeline?`]: () =>
+        jsonResponse({
+          records: [
+            createStage({ name: 'Build', state: 'inProgress', result: undefined, order: 1 }),
+            createStage({ id: 'stage-2', name: 'Run tests', state: 'pending', result: undefined, order: 2 }),
+            createStage({ id: 'stage-3', name: 'Prod', state: 'pending', result: undefined, order: 3 }),
+          ],
+        }),
+      [`/${PROJECT}/_apis/pipelines/approvals?`]: () => jsonResponse({ value: [] }),
+    });
+
+    await poller.runPoll();
+
+    expect(chrome.notifications.create).not.toHaveBeenCalled();
+  });
+
+  it('maps a stage-less approval to only the single next-up pending stage in a sequential build', async () => {
+    const { storage, poller } = await loadModules();
+    await storage.saveCredentials(ORG_URL, 'secret');
+    await storage.setPipelineConfigs([
+      createConfig({
+        stages: [
+          { stageName: 'Build', notifyOnComplete: false, notifyOnApprovalNeeded: true },
+          { stageName: 'Acceptance', notifyOnComplete: false, notifyOnApprovalNeeded: true },
+          { stageName: 'Prod', notifyOnComplete: false, notifyOnApprovalNeeded: true },
+        ],
+      }),
+    ]);
+
+    installFetchMap({
+      [`/${PROJECT}/_apis/build/builds/${BUILD_ID}?`]: () =>
+        jsonResponse(createBuild({ status: 'inProgress', result: undefined })),
+      [`/${PROJECT}/_apis/build/builds/${BUILD_ID}/timeline?`]: () =>
+        jsonResponse({
+          records: [
+            createStage({ name: 'Build', state: 'completed', result: 'succeeded', order: 1 }),
+            createStage({ id: 'stage-2', name: 'Acceptance', state: 'pending', result: undefined, order: 2 }),
+            createStage({ id: 'stage-3', name: 'Prod', state: 'pending', result: undefined, order: 3 }),
+          ],
+        }),
       [`/${PROJECT}/_apis/pipelines/approvals?`]: () => jsonResponse({ value: [createApproval()] }),
     });
 
@@ -314,7 +376,110 @@ describe('background poller', () => {
       })
     );
     expect(chrome.notifications.create).not.toHaveBeenCalledWith(
-      `${PIPELINE_ID}-${BUILD_ID}-Test-approval`,
+      `${PIPELINE_ID}-${BUILD_ID}-Prod-approval`,
+      expect.any(Object)
+    );
+  });
+
+  it('maps a stage-less approval to all parallel next-up stages after a skipped predecessor', async () => {
+    const { storage, poller } = await loadModules();
+    await storage.saveCredentials(ORG_URL, 'secret');
+    await storage.setPipelineConfigs([
+      createConfig({
+        stages: [
+          { stageName: 'Smoke', notifyOnComplete: false, notifyOnApprovalNeeded: true },
+          { stageName: 'Deploy West', notifyOnComplete: false, notifyOnApprovalNeeded: true },
+          { stageName: 'Deploy East', notifyOnComplete: false, notifyOnApprovalNeeded: true },
+          { stageName: 'Prod', notifyOnComplete: false, notifyOnApprovalNeeded: true },
+        ],
+      }),
+    ]);
+
+    installFetchMap({
+      [`/${PROJECT}/_apis/build/builds/${BUILD_ID}?`]: () =>
+        jsonResponse(createBuild({ status: 'inProgress', result: undefined })),
+      [`/${PROJECT}/_apis/build/builds/${BUILD_ID}/timeline?`]: () =>
+        jsonResponse({
+          records: [
+            createStage({ name: 'Smoke', state: 'completed', result: 'skipped', order: 1 }),
+            createStage({ id: 'stage-2', name: 'Deploy West', state: 'pending', result: undefined, order: 2 }),
+            createStage({ id: 'stage-3', name: 'Deploy East', state: 'pending', result: undefined, order: 2 }),
+            createStage({ id: 'stage-4', name: 'Prod', state: 'pending', result: undefined, order: 3 }),
+          ],
+        }),
+      [`/${PROJECT}/_apis/pipelines/approvals?`]: () => jsonResponse({ value: [createApproval()] }),
+    });
+
+    await poller.runPoll();
+
+    expect(chrome.notifications.create).toHaveBeenCalledTimes(2);
+    expect(chrome.notifications.create).toHaveBeenCalledWith(
+      `${PIPELINE_ID}-${BUILD_ID}-Deploy West-approval`,
+      expect.objectContaining({
+        message: 'Deploy West is waiting for your approval',
+      })
+    );
+    expect(chrome.notifications.create).toHaveBeenCalledWith(
+      `${PIPELINE_ID}-${BUILD_ID}-Deploy East-approval`,
+      expect.objectContaining({
+        message: 'Deploy East is waiting for your approval',
+      })
+    );
+    expect(chrome.notifications.create).not.toHaveBeenCalledWith(
+      `${PIPELINE_ID}-${BUILD_ID}-Prod-approval`,
+      expect.any(Object)
+    );
+  });
+
+  it('keeps stage-less approvals constrained to next-up stages when mixed with named approvals', async () => {
+    const { storage, poller } = await loadModules();
+    await storage.saveCredentials(ORG_URL, 'secret');
+    await storage.setPipelineConfigs([
+      createConfig({
+        stages: [
+          { stageName: 'Build', notifyOnComplete: false, notifyOnApprovalNeeded: true },
+          { stageName: 'Acceptance', notifyOnComplete: false, notifyOnApprovalNeeded: true },
+          { stageName: 'Prod', notifyOnComplete: false, notifyOnApprovalNeeded: true },
+          { stageName: 'Post-check', notifyOnComplete: false, notifyOnApprovalNeeded: true },
+        ],
+      }),
+    ]);
+
+    installFetchMap({
+      [`/${PROJECT}/_apis/build/builds/${BUILD_ID}?`]: () =>
+        jsonResponse(createBuild({ status: 'inProgress', result: undefined })),
+      [`/${PROJECT}/_apis/build/builds/${BUILD_ID}/timeline?`]: () =>
+        jsonResponse({
+          records: [
+            createStage({ name: 'Build', state: 'completed', result: 'succeeded', order: 1 }),
+            createStage({ id: 'stage-2', name: 'Acceptance', state: 'pending', result: undefined, order: 2 }),
+            createStage({ id: 'stage-3', name: 'Prod', state: 'pending', result: undefined, order: 3 }),
+            createStage({ id: 'stage-4', name: 'Post-check', state: 'pending', result: undefined, order: 4 }),
+          ],
+        }),
+      [`/${PROJECT}/_apis/pipelines/approvals?`]: () =>
+        jsonResponse({
+          value: [createApproval(), createApproval({ id: 'approval-2', stage: { name: 'Prod' } })],
+        }),
+    });
+
+    await poller.runPoll();
+
+    expect(chrome.notifications.create).toHaveBeenCalledTimes(2);
+    expect(chrome.notifications.create).toHaveBeenCalledWith(
+      `${PIPELINE_ID}-${BUILD_ID}-Acceptance-approval`,
+      expect.objectContaining({
+        message: 'Acceptance is waiting for your approval',
+      })
+    );
+    expect(chrome.notifications.create).toHaveBeenCalledWith(
+      `${PIPELINE_ID}-${BUILD_ID}-Prod-approval`,
+      expect.objectContaining({
+        message: 'Prod is waiting for your approval',
+      })
+    );
+    expect(chrome.notifications.create).not.toHaveBeenCalledWith(
+      `${PIPELINE_ID}-${BUILD_ID}-Post-check-approval`,
       expect.any(Object)
     );
   });

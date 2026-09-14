@@ -1,17 +1,5 @@
-import type { AdoListResponse, AdoBuild, AdoTimelineRecord } from '../types/ado';
+import type { AdoBuild, AdoTimelineRecord } from '../types/ado';
 import { AdoClient } from './ado-client';
-
-export async function getBuilds(
-  client: AdoClient,
-  project: string,
-  pipelineId: number,
-  top = 1
-): Promise<AdoBuild[]> {
-  const data = await client.get<AdoListResponse<AdoBuild>>(
-    `${client.orgUrl}/${project}/_apis/build/builds?definitions=${pipelineId}&$top=${top}&api-version=7.1`
-  );
-  return data.value;
-}
 
 export async function getBuild(client: AdoClient, project: string, buildId: number): Promise<AdoBuild> {
   return client.get<AdoBuild>(

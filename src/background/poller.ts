@@ -1,10 +1,46 @@
 import { getPipelineConfigs, setLastPolledAt } from '../utils/storage';
 import { createClient } from '../api/ado-client';
-import { getBuilds, getBuild, getTimeline } from '../api/pipelines';
+import { getBuild, getTimeline } from '../api/pipelines';
 import { getPendingApprovals } from '../api/approvals';
 import { getSnapshot, saveSnapshot } from './state';
 import { sendNotification } from './notifier';
-import type { BuildSnapshot, MonitoringKey, StageSnapshot } from '../types/ado';
+import type { AdoTimelineRecord, BuildSnapshot, MonitoringKey, StageSnapshot } from '../types/ado';
+
+function isStageResolved(stage: AdoTimelineRecord): boolean {
+  return stage.state === 'completed' || stage.result === 'skipped';
+}
+
+function getNextUpPendingStageNames(stages: AdoTimelineRecord[]): Set<string> {
+  const stagesByOrder = new Map<number, AdoTimelineRecord[]>();
+
+  for (const stage of [...stages].sort((a, b) => a.order - b.order)) {
+    const stagesAtOrder = stagesByOrder.get(stage.order);
+    if (stagesAtOrder) {
+      stagesAtOrder.push(stage);
+    } else {
+      stagesByOrder.set(stage.order, [stage]);
+    }
+  }
+
+  const nextUpPendingStageNames = new Set<string>();
+  let allLowerOrderStagesResolved = true;
+
+  for (const stagesAtOrder of stagesByOrder.values()) {
+    if (allLowerOrderStagesResolved) {
+      for (const stage of stagesAtOrder) {
+        if (stage.state === 'pending') {
+          nextUpPendingStageNames.add(stage.name.toLowerCase());
+        }
+      }
+    }
+
+    if (!stagesAtOrder.every(isStageResolved)) {
+      allLowerOrderStagesResolved = false;
+    }
+  }
+
+  return nextUpPendingStageNames;
+}
 
 export async function runPoll(): Promise<void> {
   const client = await createClient();
@@ -15,41 +51,23 @@ export async function runPoll(): Promise<void> {
 
   for (const config of configs) {
     try {
-      const pinnedBuildId =
-        Number.isInteger(config.buildId) && config.buildId > 0 ? config.buildId : null;
-      const baseMonitoringKey = {
+      const snapshotKey: MonitoringKey = {
         org: config.org,
         project: config.project,
         pipelineId: config.pipelineId,
+        buildId: config.buildId,
       };
 
       let build: import('../types/ado').AdoBuild;
-      let snapshotKey: MonitoringKey;
 
-      if (pinnedBuildId !== null) {
-        snapshotKey = {
-          ...baseMonitoringKey,
-          buildId: pinnedBuildId,
-        };
-
-        try {
-          build = await getBuild(client, config.project, pinnedBuildId);
-        } catch (err) {
-          console.warn(
-            `[DevOps Notifier] Pinned build ${pinnedBuildId} fetch failed; skipping poll cycle for pipeline ${config.pipelineId}:`,
-            err
-          );
-          continue;
-        }
-      } else {
-        // Legacy safety net for malformed pre-migration configs.
-        const builds = await getBuilds(client, config.project, config.pipelineId, 1);
-        if (builds.length === 0) continue;
-        build = builds[0];
-        snapshotKey = {
-          ...baseMonitoringKey,
-          buildId: build.id,
-        };
+      try {
+        build = await getBuild(client, config.project, config.buildId);
+      } catch (err) {
+        console.warn(
+          `[DevOps Notifier] Pinned build ${config.buildId} fetch failed; skipping poll cycle for pipeline ${config.pipelineId}:`,
+          err
+        );
+        continue;
       }
 
       const snapshot = await getSnapshot(snapshotKey);
@@ -62,6 +80,7 @@ export async function runPoll(): Promise<void> {
 
       const stages = records.filter(r => r.type === 'Stage');
       const newStages: Record<string, StageSnapshot> = {};
+      const nextUpPendingStageNames = getNextUpPendingStageNames(stages);
 
       console.log(
         `[DevOps Notifier] Poll pipeline "${config.pipelineName}" build #${build.id}: ` +
@@ -75,22 +94,22 @@ export async function runPoll(): Promise<void> {
         if (!stageConfig) continue;
 
         // ---------------------------------------------------------------------------
-        // Approval detection — defensive, multi-strategy
+        // Approval detection — defensive, evidence-based
         //
         // The ADO _apis/pipelines/approvals response does NOT reliably include a
-        // top-level `stage` field.  The only field we can dependably match on is
-        // `pipeline.id`, which is the BUILD (run) id — NOT the pipeline definition id.
+        // top-level `stage` field, so we first narrow approvals to the current
+        // build run via `pipeline.owner.id`.
         //
-        // Strategy 1: match by build-id only (all pending approvals for this run
-        // almost certainly block *some* stage the user cares about).
+        // Strategy 1: approvals with `stage.name` must match that exact stage name.
         //
-        // Strategy 2 (bonus): if the approval DOES have a `stage.name`, use it for
-        // a tighter match; otherwise fall back to build-id match.
+        // Strategy 2: approvals without stage info are always build-level signals,
+        // so attribute them only to "next up" pending stages — every pending stage
+        // whose strictly lower-order predecessors are already completed/skipped.
+        // Parallel same-order stages can all qualify at once.
         //
-        // Strategy 3 (timeline fallback): if the approvals API returns nothing, treat
-        // a watched stage that has `state === 'pending'` while the build is still
-        // `inProgress` as awaiting approval — this covers ADO environments where the
-        // approvals endpoint is gated behind extra permissions.
+        // We intentionally do NOT guess from `stage.state === 'pending'` alone when
+        // the approvals API returns no matching approvals. In ADO timelines, pending
+        // also means "not started yet", so that heuristic produces false positives.
         // ---------------------------------------------------------------------------
 
         let approvalPending = false;
@@ -102,27 +121,17 @@ export async function runPoll(): Promise<void> {
         );
 
         if (buildApprovals.length > 0) {
-          // If any approval has stage info, try a name match first
-          const hasStageInfo = buildApprovals.some(a => a.stage?.name);
-          if (hasStageInfo) {
-            approvalPending = buildApprovals.some(
-              a => !a.stage?.name || a.stage.name.toLowerCase() === stage.name.toLowerCase()
-            );
-          } else {
-            // No stage info at all — any pending approval on this build means
-            // something is blocked. Only attribute it to stages that are actually
-            // waiting (state === 'pending'); a stage that is already 'inProgress'
-            // is actively running/deploying, not blocked on approval.
-            approvalPending = stage.state === 'pending';
-          }
-        }
+          const stageName = stage.name.toLowerCase();
+          const namedApprovals = buildApprovals.filter(a => a.stage?.name);
+          const stagelessApprovals = buildApprovals.filter(a => !a.stage?.name);
 
-        // Timeline fallback: stage is in "pending" state while build is still running
-        if (!approvalPending && build!.status === 'inProgress' && stage.state === 'pending') {
-          console.log(
-            `[DevOps Notifier] Stage "${stage.name}" has state=pending (timeline fallback) — treating as approval pending`
+          const matchesNamedApproval = namedApprovals.some(
+            a => a.stage!.name.toLowerCase() === stageName
           );
-          approvalPending = true;
+          const matchesStagelessApproval =
+            stagelessApprovals.length > 0 && nextUpPendingStageNames.has(stageName);
+
+          approvalPending = matchesNamedApproval || matchesStagelessApproval;
         }
 
         console.log(

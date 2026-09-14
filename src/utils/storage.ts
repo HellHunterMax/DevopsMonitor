@@ -6,10 +6,6 @@ const PIPELINE_CONFIGS_KEY = "pipeline_configs";
 const BUILD_SNAPSHOTS_KEY = "build_snapshots";
 const DISMISSED_BUILDS_KEY = "dismissed_builds";
 const LAST_POLLED_KEY = "last_polled_at";
-const STORAGE_SCHEMA_VERSION_KEY = "storage_schema_version";
-const CURRENT_STORAGE_SCHEMA_VERSION = 2;
-
-let schemaReadyPromise: Promise<void> | null = null;
 
 type StorageMap = Record<string, unknown>;
 
@@ -114,7 +110,7 @@ function normalizePipelineConfig(value: unknown): PipelineConfig | null {
 		org: value.org,
 		project: value.project,
 		pipelineId: value.pipelineId,
-		buildId: value.buildId ?? value.lastBuildId,
+		buildId: value.buildId,
 	});
 	const pipelineName = typeof value.pipelineName === "string" ? value.pipelineName.trim() : "";
 
@@ -129,62 +125,11 @@ function normalizePipelineConfig(value: unknown): PipelineConfig | null {
 	};
 }
 
-interface ConfigLookups {
-	byKey: Map<string, PipelineConfig>;
-	byPipelineId: Map<number, PipelineConfig[]>;
-}
-
-function buildConfigLookups(configs: PipelineConfig[]): ConfigLookups {
-	const byKey = new Map<string, PipelineConfig>();
-	const byPipelineId = new Map<number, PipelineConfig[]>();
-
-	for (const config of configs) {
-		const key = `${config.pipelineId}::${config.buildId}`;
-		byKey.set(key, config);
-
-		if (!byPipelineId.has(config.pipelineId)) {
-			byPipelineId.set(config.pipelineId, []);
-		}
-		byPipelineId.get(config.pipelineId)!.push(config);
-	}
-
-	return { byKey, byPipelineId };
-}
-
-function normalizeBuildSnapshot(value: unknown, lookups: ConfigLookups): BuildSnapshot | null {
+function normalizeBuildSnapshot(value: unknown): BuildSnapshot | null {
 	if (!isRecord(value)) return null;
 
-	const directKey = normalizeMonitoringKey(value);
-	const pipelineId = asPositiveInt(value.pipelineId);
-	const buildId = asPositiveInt(value.buildId);
-
-	let key = directKey;
-	if (!key && pipelineId && buildId) {
-		const compositeKey = `${pipelineId}::${buildId}`;
-		const exactMatch = lookups.byKey.get(compositeKey);
-		if (exactMatch) {
-			key = {
-				org: exactMatch.org,
-				project: exactMatch.project,
-				pipelineId,
-				buildId,
-			};
-		} else {
-			const pipelineMatches = lookups.byPipelineId.get(pipelineId);
-			if (pipelineMatches && pipelineMatches.length === 1) {
-				key = {
-					org: pipelineMatches[0].org,
-					project: pipelineMatches[0].project,
-					pipelineId,
-					buildId,
-				};
-			}
-		}
-	}
-
-	if (!key) {
-		return null;
-	}
+	const key = normalizeMonitoringKey(value);
+	if (!key) return null;
 
 	return {
 		...key,
@@ -200,56 +145,12 @@ function dedupeByKey<T extends MonitoringKey>(items: T[]): T[] {
 	return [...deduped.values()];
 }
 
-async function ensureStorageSchema(): Promise<void> {
-	if (!schemaReadyPromise) {
-		schemaReadyPromise = migrateStorageSchema();
-	}
-	await schemaReadyPromise;
-}
-
-async function migrateStorageSchema(): Promise<void> {
-	const stored = await chrome.storage.local.get([STORAGE_SCHEMA_VERSION_KEY, ...CREDENTIAL_KEYS, PIPELINE_CONFIGS_KEY, BUILD_SNAPSHOTS_KEY, DISMISSED_BUILDS_KEY]);
-
-	if (stored[STORAGE_SCHEMA_VERSION_KEY] === CURRENT_STORAGE_SCHEMA_VERSION) {
-		return;
-	}
-
-	const updates: StorageMap = {
-		[STORAGE_SCHEMA_VERSION_KEY]: CURRENT_STORAGE_SCHEMA_VERSION,
-	};
-
-	if (typeof stored.ado_org_url === "string") {
-		const normalizedOrgUrl = normalizeAdoOrgUrl(stored.ado_org_url);
-		if (normalizedOrgUrl) {
-			updates.ado_org_url = normalizedOrgUrl;
-		}
-	}
-
-	const pipelineConfigs = Array.isArray(stored[PIPELINE_CONFIGS_KEY]) ? dedupeByKey(stored[PIPELINE_CONFIGS_KEY].map(normalizePipelineConfig).filter((config): config is PipelineConfig => config !== null)) : [];
-	updates[PIPELINE_CONFIGS_KEY] = pipelineConfigs;
-
-	const configLookups = buildConfigLookups(pipelineConfigs);
-	const buildSnapshots = Array.isArray(stored[BUILD_SNAPSHOTS_KEY]) ? dedupeByKey(stored[BUILD_SNAPSHOTS_KEY].map((snapshot) => normalizeBuildSnapshot(snapshot, configLookups)).filter((snapshot): snapshot is BuildSnapshot => snapshot !== null)) : [];
-	updates[BUILD_SNAPSHOTS_KEY] = buildSnapshots;
-
-	const dismissedRaw = stored[DISMISSED_BUILDS_KEY];
-	if (Array.isArray(dismissedRaw)) {
-		const hasLegacyNumbers = dismissedRaw.some((item) => typeof item === "number");
-		updates[DISMISSED_BUILDS_KEY] = hasLegacyNumbers ? [] : dedupeByKey(dismissedRaw.map(normalizeMonitoringKey).filter((item): item is MonitoringKey => item !== null));
-	} else {
-		updates[DISMISSED_BUILDS_KEY] = [];
-	}
-
-	await chrome.storage.local.set(updates);
-}
-
 export async function getCredentials(): Promise<{ orgUrl: string; pat: string } | null> {
-	await ensureStorageSchema();
-
 	const result = await chrome.storage.local.get([...CREDENTIAL_KEYS]);
 	if (!result.ado_org_url || !result.ado_pat) return null;
 
-	const orgUrl = typeof result.ado_org_url === "string" ? result.ado_org_url : "";
+	const orgUrlRaw = typeof result.ado_org_url === "string" ? result.ado_org_url : "";
+	const orgUrl = normalizeAdoOrgUrl(orgUrlRaw) ?? orgUrlRaw.trim();
 	const pat = typeof result.ado_pat === "string" ? result.ado_pat : "";
 	if (!orgUrl || !pat) return null;
 
@@ -262,8 +163,6 @@ export async function saveCredentials(orgUrl: string, pat: string): Promise<void
 }
 
 export async function getPipelineConfigs(): Promise<PipelineConfig[]> {
-	await ensureStorageSchema();
-
 	const result = await chrome.storage.local.get(PIPELINE_CONFIGS_KEY);
 	if (!Array.isArray(result[PIPELINE_CONFIGS_KEY])) {
 		return [];
@@ -273,38 +172,27 @@ export async function getPipelineConfigs(): Promise<PipelineConfig[]> {
 }
 
 export async function setPipelineConfigs(configs: PipelineConfig[]): Promise<void> {
-	await ensureStorageSchema();
 	await chrome.storage.local.set({
 		[PIPELINE_CONFIGS_KEY]: dedupeByKey(configs.map(normalizePipelineConfig).filter((config): config is PipelineConfig => config !== null)),
 	});
 }
 
 export async function getBuildSnapshots(): Promise<BuildSnapshot[]> {
-	await ensureStorageSchema();
-
-	const configs = await getPipelineConfigs();
-	const configLookups = buildConfigLookups(configs);
 	const result = await chrome.storage.local.get(BUILD_SNAPSHOTS_KEY);
 	if (!Array.isArray(result[BUILD_SNAPSHOTS_KEY])) {
 		return [];
 	}
 
-	return dedupeByKey(result[BUILD_SNAPSHOTS_KEY].map((snapshot) => normalizeBuildSnapshot(snapshot, configLookups)).filter((snapshot): snapshot is BuildSnapshot => snapshot !== null));
+	return dedupeByKey(result[BUILD_SNAPSHOTS_KEY].map(normalizeBuildSnapshot).filter((snapshot): snapshot is BuildSnapshot => snapshot !== null));
 }
 
 export async function setBuildSnapshots(snapshots: BuildSnapshot[]): Promise<void> {
-	await ensureStorageSchema();
-	const configs = await getPipelineConfigs();
-	const configLookups = buildConfigLookups(configs);
-
 	await chrome.storage.local.set({
-		[BUILD_SNAPSHOTS_KEY]: dedupeByKey(snapshots.map((snapshot) => normalizeBuildSnapshot(snapshot, configLookups)).filter((snapshot): snapshot is BuildSnapshot => snapshot !== null)),
+		[BUILD_SNAPSHOTS_KEY]: dedupeByKey(snapshots.map(normalizeBuildSnapshot).filter((snapshot): snapshot is BuildSnapshot => snapshot !== null)),
 	});
 }
 
 export async function getDismissedBuilds(): Promise<MonitoringKey[]> {
-	await ensureStorageSchema();
-
 	const result = await chrome.storage.local.get(DISMISSED_BUILDS_KEY);
 	if (!Array.isArray(result[DISMISSED_BUILDS_KEY])) {
 		return [];

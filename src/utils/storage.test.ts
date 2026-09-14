@@ -64,6 +64,41 @@ describe('storage utils', () => {
     await expect(storage.getBuildSnapshots()).resolves.toEqual([BASE_SNAPSHOT]);
   });
 
+  it('discards pipeline configs that only match the removed legacy lastBuildId shape', async () => {
+    const storage = await loadStorageModule();
+
+    await chrome.storage.local.set({
+      pipeline_configs: [
+        {
+          org: BASE_KEY.org,
+          project: BASE_KEY.project,
+          pipelineId: BASE_KEY.pipelineId,
+          lastBuildId: BASE_KEY.buildId,
+          pipelineName: BASE_CONFIG.pipelineName,
+          stages: BASE_CONFIG.stages,
+        },
+      ],
+    });
+
+    await expect(storage.getPipelineConfigs()).resolves.toEqual([]);
+  });
+
+  it('discards build snapshots missing the full monitoring key instead of reconstructing legacy shapes', async () => {
+    const storage = await loadStorageModule();
+
+    await chrome.storage.local.set({
+      build_snapshots: [
+        {
+          pipelineId: BASE_KEY.pipelineId,
+          buildId: BASE_KEY.buildId,
+          stages: BASE_SNAPSHOT.stages,
+        },
+      ],
+    });
+
+    await expect(storage.getBuildSnapshots()).resolves.toEqual([]);
+  });
+
   it('dismisses and undismisses builds using the composite monitoring key', async () => {
     const storage = await loadStorageModule();
 

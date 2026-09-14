@@ -16,3 +16,5 @@
 📌 2026-08-26: Primary colour is Azure blue #0078d4. Secondary/destructive action uses #c42b1c with btn-secondary class.
 
 📌 Team update (2026-08-28T13:34:01.027+02:00): Popup production blockers closed with XSS-safe literal rendering and state semantics aligned to exact monitored-build identity.
+
+📌 Team update (2026-09-01T09:16:00+02:00): Took the third revision after Linus and Rusty were locked out, split named-stage approval matching from stage-less approval routing through next-up pending stages, and landed the Basher-approved final fix.
