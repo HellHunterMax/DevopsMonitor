@@ -19,3 +19,7 @@
 📌 Team update (2026-08-28T13:34:01.027+02:00): Production-readiness review ended approved-for-scope after exact monitoring identity, popup XSS hardening, and supporting tests were in place.
 
 📌 Team update (2026-09-01T09:16:00+02:00): Took revision ownership after Linus was locked out, fixed next-up approval attribution to respect same-order parallel stages, and was then locked out too when Basher found a remaining mixed named + stage-less approval bug.
+
+📌 Team update (2026-09-15T09:00:50+02:00): The stale-data cleanup TTL debate reinforced that retention anchors must be tied to the product promise: a simple monitoring-start hard cap looked cheaper, but Fact Checker showed it would break approval-notification trust, so the final design reverted to completion-anchored expiry with active/approval-pending exemptions.
+
+📌 Team update (2026-09-15T15:08:38+02:00): The over-engineering audit reinforced that architectural safety fixes should be scoped to the minimum feature boundary unless the team explicitly chooses a broader refactor.

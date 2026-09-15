@@ -38,9 +38,38 @@ async function loadStateModule() {
   return import('./state');
 }
 
+async function seedConfigs(): Promise<void> {
+  const storage = await import('../utils/storage');
+  await storage.setPipelineConfigs([
+    {
+      ...KEY_ONE,
+      pipelineName: 'Deploy',
+      stages: [
+        {
+          stageName: 'Prod',
+          notifyOnComplete: true,
+          notifyOnApprovalNeeded: true,
+        },
+      ],
+    },
+    {
+      ...KEY_TWO,
+      pipelineName: 'Deploy 2',
+      stages: [
+        {
+          stageName: 'Prod',
+          notifyOnComplete: true,
+          notifyOnApprovalNeeded: true,
+        },
+      ],
+    },
+  ]);
+}
+
 describe('background state', () => {
   it('saves and retrieves snapshots by the full monitoring key', async () => {
     const state = await loadStateModule();
+    await seedConfigs();
 
     await state.saveSnapshot(SNAPSHOT_ONE);
     await state.saveSnapshot(SNAPSHOT_TWO);
@@ -51,6 +80,7 @@ describe('background state', () => {
 
   it('updates an existing snapshot without affecting other builds', async () => {
     const state = await loadStateModule();
+    await seedConfigs();
 
     await state.saveSnapshot(SNAPSHOT_ONE);
     await state.saveSnapshot(SNAPSHOT_TWO);
@@ -78,6 +108,7 @@ describe('background state', () => {
 
   it('clears snapshots by exact key only', async () => {
     const state = await loadStateModule();
+    await seedConfigs();
 
     await state.saveSnapshot(SNAPSHOT_ONE);
     await state.saveSnapshot(SNAPSHOT_TWO);

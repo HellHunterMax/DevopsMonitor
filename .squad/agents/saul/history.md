@@ -18,3 +18,5 @@
 📌 Team update (2026-08-28T13:34:01.027+02:00): Popup production blockers closed with XSS-safe literal rendering and state semantics aligned to exact monitored-build identity.
 
 📌 Team update (2026-09-01T09:16:00+02:00): Took the third revision after Linus and Rusty were locked out, split named-stage approval matching from stage-less approval routing through next-up pending stages, and landed the Basher-approved final fix.
+
+📌 Team update (2026-09-15T09:00:50+02:00): Stale-data cleanup exposed a UI handoff lesson — when a copy change touches shipped markup, verify the real static HTML templates changed on disk and make tests load the runtime template, not only a hand-built fixture.

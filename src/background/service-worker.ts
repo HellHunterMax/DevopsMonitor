@@ -1,42 +1,69 @@
-import { runPoll } from './poller';
-import { handleNotificationClick, sendTestNotification } from './notifier';
+import { runPoll } from "./poller";
+import { runStaleDataPrune } from "./state";
+import { handleNotificationClick, sendTestNotification } from "./notifier";
 
-const ALARM_NAME = 'devops-poll';
+const POLL_ALARM_NAME = "devops-poll";
+const PRUNE_ALARM_NAME = "devops-prune";
 
-function registerAlarm(): void {
-  chrome.alarms.get(ALARM_NAME, existing => {
-    if (!existing) {
-      chrome.alarms.create(ALARM_NAME, { periodInMinutes: 0.5 });
-    }
-  });
+function registerAlarm(name: string, periodInMinutes: number): void {
+	chrome.alarms.get(name, (existing) => {
+		if (!existing) {
+			chrome.alarms.create(name, { periodInMinutes });
+		}
+	});
+}
+
+function registerAlarms(): void {
+	registerAlarm(POLL_ALARM_NAME, 0.5);
+	registerAlarm(PRUNE_ALARM_NAME, 60);
 }
 
 chrome.runtime.onInstalled.addListener(() => {
-  chrome.alarms.clear(ALARM_NAME, () => {
-    chrome.alarms.create(ALARM_NAME, { periodInMinutes: 0.5 });
-  });
-  runPoll().catch(console.error);
-});
-chrome.runtime.onStartup.addListener(registerAlarm);
-
-chrome.alarms.onAlarm.addListener(alarm => {
-  if (alarm.name === ALARM_NAME) {
-    runPoll().catch(console.error);
-  }
-});
-
-chrome.notifications.onClicked.addListener(notificationId => {
-  handleNotificationClick(notificationId).catch(console.error);
+	chrome.alarms.clear(POLL_ALARM_NAME, () => {
+		chrome.alarms.create(POLL_ALARM_NAME, { periodInMinutes: 0.5 });
+	});
+	chrome.alarms.clear(PRUNE_ALARM_NAME, () => {
+		chrome.alarms.create(PRUNE_ALARM_NAME, { periodInMinutes: 60 });
+	});
+	void (async () => {
+		await runStaleDataPrune();
+		await runPoll();
+	})().catch(console.error);
 });
 
-// Handle messages from options/popup pages
+chrome.runtime.onStartup.addListener(() => {
+	registerAlarms();
+	void runStaleDataPrune().catch(console.error);
+});
+
+chrome.alarms.onAlarm.addListener((alarm) => {
+	if (alarm.name === POLL_ALARM_NAME) {
+		void runPoll().catch(console.error);
+	}
+
+	if (alarm.name === PRUNE_ALARM_NAME) {
+		void runStaleDataPrune().catch(console.error);
+	}
+});
+
+chrome.notifications.onClicked.addListener((notificationId) => {
+	void handleNotificationClick(notificationId).catch(console.error);
+});
+
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
-  if (message.type === 'TEST_NOTIFICATION') {
-    sendTestNotification().then(() => sendResponse({ ok: true }));
-    return true; // keep channel open for async response
-  }
-  if (message.type === 'FORCE_POLL') {
-    runPoll().then(() => sendResponse({ ok: true })).catch(console.error);
-    return true;
-  }
+	if (message.type === "TEST_NOTIFICATION") {
+		void sendTestNotification()
+			.then(() => sendResponse({ ok: true }))
+			.catch((error) => sendResponse({ ok: false, error: error instanceof Error ? error.message : String(error) }));
+		return true;
+	}
+
+	if (message.type === "FORCE_POLL") {
+		void runPoll()
+			.then(() => sendResponse({ ok: true }))
+			.catch((error) => sendResponse({ ok: false, error: error instanceof Error ? error.message : String(error) }));
+		return true;
+	}
+
+	return false;
 });

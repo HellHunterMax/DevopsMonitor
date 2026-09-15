@@ -13,7 +13,6 @@ import {
 import { AdoClient } from '../api/ado-client';
 import { getTimeline, getBuild } from '../api/pipelines';
 import { parseAdoBuildUrl } from '../utils/url-builder';
-import { clearSnapshot } from '../background/state';
 import {
   monitoringKeyEquals,
   type BuildSnapshot,
@@ -21,6 +20,14 @@ import {
   type PipelineConfig,
   type StageConfig,
 } from '../types/ado';
+import { clearSnapshot, runStaleDataPrune } from '../background/state';
+
+const MONITORING_STORAGE_KEYS = new Set([
+  'pipeline_configs',
+  'build_snapshots',
+  'dismissed_builds',
+  'last_polled_at',
+]);
 
 function setStatus(msg: string, type: 'info' | 'error' | 'success' = 'info'): void {
   const el = document.getElementById('status')!;
@@ -114,9 +121,7 @@ function renderMonitoredList(configs: PipelineConfig[], snapshots: BuildSnapshot
     removeBtn.textContent = '✕';
     removeBtn.addEventListener('click', async () => {
       const all = await getPipelineConfigs();
-      await setPipelineConfigs(
-        all.filter(c => !monitoringKeyEquals(c, configKey))
-      );
+      await setPipelineConfigs(all.filter(c => !monitoringKeyEquals(c, configKey)));
       await renderAll();
     });
 
@@ -360,11 +365,12 @@ async function initContextFlow(credentials: { orgUrl: string; pat: string }): Pr
       const configs = await getPipelineConfigs();
       const idx = configs.findIndex(config => monitoringKeyEquals(config, monitoringKey));
       const previousConfig = idx >= 0 ? configs[idx] : null;
-      if (idx >= 0) configs[idx] = newConfig;
-      else configs.push(newConfig);
+      if (idx >= 0) {
+        configs[idx] = newConfig;
+      } else {
+        configs.push(newConfig);
+      }
       await setPipelineConfigs(configs);
-      // Clear any stale snapshot for this monitored build so the first poll on the new
-      // build starts clean — prevents old approvalPending state suppressing notifications.
       await clearSnapshot(previousConfig ?? monitoringKey);
       renderStateA(pipelineName, ctx!.project, stageConfigs, async () => {
         const refreshed = await getPipelineConfigs();
@@ -400,6 +406,21 @@ export async function init(): Promise<void> {
     return;
   }
 
+  const refreshOnStorageChange = (
+    changes: Record<string, chrome.storage.StorageChange>,
+    areaName: string
+  ): void => {
+    if (areaName !== 'local' || !Object.keys(changes).some(key => MONITORING_STORAGE_KEYS.has(key))) {
+      return;
+    }
+
+    void renderAll();
+    void initContextFlow(creds);
+  };
+  chrome.storage.onChanged.addListener(refreshOnStorageChange);
+  window.addEventListener('unload', () => chrome.storage.onChanged.removeListener(refreshOnStorageChange));
+
+  await runStaleDataPrune();
   await renderAll();
   await initPollStatusBar();
 

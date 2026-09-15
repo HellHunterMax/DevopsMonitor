@@ -32,7 +32,7 @@ export interface AdoApproval {
 		name: string;
 		owner: {
 			// the specific build run this approval gates
-			id: number; // build run id (e.g. 450785)
+			id: number | string; // build run id (e.g. 450785); ADO may serialize it as a string
 			name: string;
 		};
 	};
@@ -62,6 +62,8 @@ export interface MonitoringKey {
 	buildId: number;
 }
 
+export type MonitoringKeyLike = Pick<MonitoringKey, "org" | "project" | "pipelineId" | "buildId">;
+
 export interface PipelineConfig extends MonitoringKey {
 	pipelineName: string;
 	stages: StageConfig[];
@@ -75,12 +77,57 @@ export interface StageSnapshot {
 
 export interface BuildSnapshot extends MonitoringKey {
 	stages: Record<string, StageSnapshot>;
+	buildStatus?: string;
+	buildFinishedAt?: number;
+	lastSuccessfulPollAt?: number;
+}
+
+export interface DismissedBuild extends MonitoringKey {
+	dismissedAt: number;
+}
+
+export interface StoredDismissedBuild extends MonitoringKey {
+	dismissedAt?: number;
+}
+
+export function toMonitoringKey(value: MonitoringKeyLike): MonitoringKey {
+	return {
+		org: value.org,
+		project: value.project,
+		pipelineId: value.pipelineId,
+		buildId: value.buildId,
+	};
 }
 
 export function monitoringKeyEquals(a: MonitoringKey, b: MonitoringKey): boolean {
 	return a.org === b.org && a.project === b.project && a.pipelineId === b.pipelineId && a.buildId === b.buildId;
 }
 
-export function monitoringKeyToString(key: MonitoringKey): string {
-	return JSON.stringify(key);
+export function monitoringKeyToString(value: MonitoringKeyLike): string {
+	const key = toMonitoringKey(value);
+	return JSON.stringify({
+		org: key.org,
+		project: key.project,
+		pipelineId: key.pipelineId,
+		buildId: key.buildId,
+	});
+}
+
+export function parseMonitoringKeyString(serialized: string): MonitoringKey | null {
+	try {
+		const parsed = JSON.parse(serialized) as Partial<MonitoringKeyLike> | null;
+		if (
+			!parsed ||
+			typeof parsed.org !== "string" ||
+			typeof parsed.project !== "string" ||
+			typeof parsed.pipelineId !== "number" ||
+			typeof parsed.buildId !== "number"
+		) {
+			return null;
+		}
+
+		return toMonitoringKey(parsed as MonitoringKeyLike);
+	} catch {
+		return null;
+	}
 }

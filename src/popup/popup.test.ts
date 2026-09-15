@@ -1,3 +1,6 @@
+import { readFileSync } from 'fs';
+import { join } from 'path';
+
 import type { AdoBuild, AdoTimelineRecord, MonitoringKey, PipelineConfig } from '../types/ado';
 
 const CONFIGURED_ORG_URL = 'https://dev.azure.com/my-org';
@@ -59,32 +62,8 @@ function buildUrl(buildId = BUILD_ID, org = 'my-org', project = PROJECT): string
 }
 
 function renderPopupDom(): void {
-  document.body.innerHTML = `
-    <header>
-      <h1>DevOps Notifier</h1>
-      <a id="options-link" href="#" title="Options">&#9881;</a>
-    </header>
-    <div id="poll-status-bar" class="poll-status-bar hidden">
-      <div class="poll-times">
-        <span id="poll-last">Last polled: —</span>
-        <span id="poll-next">Next: —</span>
-      </div>
-      <button id="poll-now-btn" class="poll-now-btn">Poll Now</button>
-    </div>
-    <div id="no-credentials" class="section hidden">
-      <p>Please configure your Azure DevOps credentials first.</p>
-      <button id="open-options-btn">Open Options</button>
-    </div>
-    <div id="context-monitor" class="section hidden">
-      <div id="ctx-pipeline-header"></div>
-      <div id="ctx-body"></div>
-    </div>
-    <div id="monitored" class="section hidden">
-      <p class="section-label">Monitored pipelines</p>
-      <div id="pipeline-list"></div>
-    </div>
-    <div id="status" class="status"></div>
-  `;
+  const popupHtmlPath = join(__dirname, 'popup.html');
+  document.documentElement.innerHTML = readFileSync(popupHtmlPath, 'utf8');
 }
 
 async function flushPromises(times = 8): Promise<void> {
@@ -114,11 +93,9 @@ async function loadPopup(options: {
   });
   const getBuild = jest.fn().mockResolvedValue(options.build ?? createBuild());
   const getTimeline = jest.fn().mockResolvedValue(options.records ?? createTimelineRecords());
-  const clearSnapshot = jest.fn().mockResolvedValue(undefined);
 
   jest.doMock('../api/ado-client', () => ({ AdoClient: adoClientCtor }));
   jest.doMock('../api/pipelines', () => ({ getBuild, getTimeline }));
-  jest.doMock('../background/state', () => ({ clearSnapshot }));
 
   const storage = await import('../utils/storage');
   if (options.setupStorage) {
@@ -127,12 +104,13 @@ async function loadPopup(options: {
   (chrome.tabs.query as jest.Mock).mockResolvedValue(
     options.tabUrl === undefined ? [] : ([{ id: 1, url: options.tabUrl }] as chrome.tabs.Tab[])
   );
+  (chrome.runtime.sendMessage as jest.Mock).mockResolvedValue({ ok: true });
 
   const popup = await import('./popup');
   await popup.init();
   await flushPromises(20);
 
-  return { storage, adoClientCtor, getBuild, getTimeline, clearSnapshot };
+  return { storage, adoClientCtor, getBuild, getTimeline };
 }
 
 describe('popup', () => {
@@ -148,6 +126,12 @@ describe('popup', () => {
 
   afterEach(() => {
     window.dispatchEvent(new Event('unload'));
+  });
+
+  it('loads the shipped popup template copy', async () => {
+    await loadPopup();
+
+    expect(document.querySelector('.section-label')?.textContent).toBe('Monitored builds');
   });
 
   it('renders State A for an exact monitored build match', async () => {

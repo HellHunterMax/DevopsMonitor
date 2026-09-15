@@ -6,9 +6,18 @@ import {
   getBuildSnapshots,
   setBuildSnapshots,
   getDismissedBuilds,
+  undismissBuild,
 } from '../utils/storage';
 import { AdoClient } from '../api/ado-client';
 import { monitoringKeyToString, type AdoListResponse, type AdoProject } from '../types/ado';
+import { runStaleDataPrune } from '../background/state';
+
+const MONITORING_STORAGE_KEYS = new Set([
+  'pipeline_configs',
+  'build_snapshots',
+  'dismissed_builds',
+  'last_polled_at',
+]);
 
 function getEl<T extends HTMLElement>(id: string): T {
   return document.getElementById(id) as T;
@@ -54,7 +63,7 @@ async function renderStorageOverview(): Promise<void> {
   const pipBody = getEl<HTMLElement>('storage-pipelines-body');
   pipBody.innerHTML = '';
   if (pipelines.length === 0) {
-    pipBody.innerHTML = '<tr><td colspan="3" class="empty-row">No pipelines monitored</td></tr>';
+    pipBody.innerHTML = '<tr><td colspan="3" class="empty-row">No builds monitored</td></tr>';
   } else {
     for (const p of pipelines) {
       const tr = document.createElement('tr');
@@ -114,18 +123,21 @@ async function renderStorageOverview(): Promise<void> {
   document.querySelectorAll<HTMLButtonElement>('.tbl-del-btn').forEach(btn => {
     btn.addEventListener('click', async () => {
       const type = btn.dataset.type;
-      const key = decodeURIComponent(btn.dataset.key ?? '');
       if (type === 'pipeline') {
+        const key = decodeURIComponent(btn.dataset.key ?? '');
         const all = await getPipelineConfigs();
         await setPipelineConfigs(all.filter(p => monitoringKeyToString(p) !== key));
       } else if (type === 'snapshot') {
+        const key = decodeURIComponent(btn.dataset.key ?? '');
         const all = await getBuildSnapshots();
         await setBuildSnapshots(all.filter(s => monitoringKeyToString(s) !== key));
       } else if (type === 'dismissed') {
+        const key = decodeURIComponent(btn.dataset.key ?? '');
         const all = await getDismissedBuilds();
-        await chrome.storage.local.set({
-          dismissed_builds: all.filter(item => monitoringKeyToString(item) !== key),
-        });
+        const dismissed = all.find(item => monitoringKeyToString(item) === key);
+        if (dismissed) {
+          await undismissBuild(dismissed);
+        }
       }
       await renderStorageOverview();
     });
@@ -147,6 +159,17 @@ document.addEventListener('DOMContentLoaded', async () => {
     orgUrlInput.value = saved.orgUrl;
     patInput.value = saved.pat;
   }
+
+  const refreshOnStorageChange = (
+    changes: Record<string, chrome.storage.StorageChange>,
+    areaName: string
+  ): void => {
+    if (areaName === 'local' && Object.keys(changes).some(key => MONITORING_STORAGE_KEYS.has(key))) {
+      void renderStorageOverview();
+    }
+  };
+  chrome.storage.onChanged.addListener(refreshOnStorageChange);
+  window.addEventListener('unload', () => chrome.storage.onChanged.removeListener(refreshOnStorageChange));
 
   testBtn.addEventListener('click', async () => {
     const orgUrl = orgUrlInput.value.trim();
@@ -188,6 +211,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   });
 
   // ── Storage Overview ────────────────────────────────────────────────────────
+  await runStaleDataPrune();
   await renderStorageOverview();
 
   getEl<HTMLButtonElement>('clear-credentials-btn').addEventListener('click', async () => {
@@ -200,7 +224,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   });
 
   getEl<HTMLButtonElement>('clear-pipelines-btn').addEventListener('click', async () => {
-    if (!confirm('Remove all monitored pipelines?')) return;
+    if (!confirm('Remove all monitored builds?')) return;
     await setPipelineConfigs([]);
     await renderStorageOverview();
   });

@@ -24,3 +24,7 @@
 📌 Team update (2026-09-01T09:16:00+02:00): Authored the first approval-notification false-positive fix by removing the timeline-only fallback and introducing next-up pending-stage attribution; Basher rejected the revision for same-order parallel-stage ordering, which locked Linus out from revising that artifact further.
 
 📌 Team update (2026-09-04T14:48:51.712+02:00): Removed pre-1.0 storage-schema migration/back-compat code, deleted the poller's malformed-config/latest-build fallback path, and removed the unused getBuilds API helper after confirming the repo no longer needs legacy compatibility.
+
+📌 Team update (2026-09-15T09:00:50+02:00): The stale-data cleanup implementation established a reusable MV3 pattern: route popup/options mutations through the service worker as the single writer, use canonical four-field monitoring keys everywhere, and let lifecycle-aware prune decisions run in the same serialized state boundary.
+
+📌 Team update (2026-09-15T15:08:38+02:00): When feature work exposes an unrelated real bug, extract it into its own documented, tested change instead of bundling it into the feature diff; the stale-data simplification plus standalone owner-id fix was the better pattern.

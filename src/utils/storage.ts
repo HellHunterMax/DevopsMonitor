@@ -1,4 +1,13 @@
-import type { BuildSnapshot, MonitoringKey, NormalizedOrg, PipelineConfig, StageConfig, StageSnapshot } from "../types/ado";
+import type {
+	BuildSnapshot,
+	DismissedBuild,
+	MonitoringKey,
+	NormalizedOrg,
+	PipelineConfig,
+	StageConfig,
+	StageSnapshot,
+	StoredDismissedBuild,
+} from "../types/ado";
 import { monitoringKeyEquals, monitoringKeyToString } from "../types/ado";
 
 const CREDENTIAL_KEYS = ["ado_org_url", "ado_pat"] as const;
@@ -131,10 +140,36 @@ function normalizeBuildSnapshot(value: unknown): BuildSnapshot | null {
 	const key = normalizeMonitoringKey(value);
 	if (!key) return null;
 
+	const buildStatus = typeof value.buildStatus === "string" && value.buildStatus.trim() ? value.buildStatus : undefined;
+	const buildFinishedAt = typeof value.buildFinishedAt === "number" && Number.isFinite(value.buildFinishedAt)
+		? value.buildFinishedAt
+		: undefined;
+	const lastSuccessfulPollAt = typeof value.lastSuccessfulPollAt === "number" && Number.isFinite(value.lastSuccessfulPollAt)
+		? value.lastSuccessfulPollAt
+		: undefined;
+
 	return {
 		...key,
 		stages: normalizeStageSnapshots(value.stages),
+		buildStatus,
+		buildFinishedAt,
+		lastSuccessfulPollAt,
 	};
+}
+
+function normalizeDismissedBuild(value: unknown): StoredDismissedBuild | null {
+	const key = normalizeMonitoringKey(value);
+	if (!key) return null;
+
+	if (!isRecord(value)) {
+		return key;
+	}
+
+	const dismissedAt = typeof value.dismissedAt === "number" && Number.isFinite(value.dismissedAt)
+		? value.dismissedAt
+		: undefined;
+
+	return dismissedAt === undefined ? key : { ...key, dismissedAt };
 }
 
 function dedupeByKey<T extends MonitoringKey>(items: T[]): T[] {
@@ -192,27 +227,47 @@ export async function setBuildSnapshots(snapshots: BuildSnapshot[]): Promise<voi
 	});
 }
 
-export async function getDismissedBuilds(): Promise<MonitoringKey[]> {
+export async function getDismissedBuilds(): Promise<StoredDismissedBuild[]> {
 	const result = await chrome.storage.local.get(DISMISSED_BUILDS_KEY);
 	if (!Array.isArray(result[DISMISSED_BUILDS_KEY])) {
 		return [];
 	}
 
-	return dedupeByKey(result[DISMISSED_BUILDS_KEY].map(normalizeMonitoringKey).filter((key): key is MonitoringKey => key !== null));
+	const deduped = new Map<string, StoredDismissedBuild>();
+	for (const record of result[DISMISSED_BUILDS_KEY].map(normalizeDismissedBuild).filter((key): key is StoredDismissedBuild => key !== null)) {
+		const serializedKey = monitoringKeyToString(record);
+		const existing = deduped.get(serializedKey);
+		if (!existing) {
+			deduped.set(serializedKey, record);
+			continue;
+		}
+
+		const existingDismissedAt = typeof existing.dismissedAt === "number" ? existing.dismissedAt : Number.NEGATIVE_INFINITY;
+		const recordDismissedAt = typeof record.dismissedAt === "number" ? record.dismissedAt : Number.NEGATIVE_INFINITY;
+		deduped.set(serializedKey, recordDismissedAt >= existingDismissedAt ? record : existing);
+	}
+
+	return [...deduped.values()];
 }
 
-export async function dismissBuild(key: MonitoringKey): Promise<void> {
+export async function setDismissedBuilds(builds: StoredDismissedBuild[]): Promise<void> {
+	await chrome.storage.local.set({
+		[DISMISSED_BUILDS_KEY]: builds
+			.map(normalizeDismissedBuild)
+			.filter((build): build is StoredDismissedBuild => build !== null),
+	});
+}
+
+export async function dismissBuild(key: MonitoringKey, dismissedAt = Date.now()): Promise<void> {
 	const current = await getDismissedBuilds();
 	if (!current.some((item) => monitoringKeyEquals(item, key))) {
-		await chrome.storage.local.set({ [DISMISSED_BUILDS_KEY]: [...current, key] });
+		await setDismissedBuilds([...current, { ...key, dismissedAt } satisfies DismissedBuild]);
 	}
 }
 
 export async function undismissBuild(key: MonitoringKey): Promise<void> {
 	const current = await getDismissedBuilds();
-	await chrome.storage.local.set({
-		[DISMISSED_BUILDS_KEY]: current.filter((item) => !monitoringKeyEquals(item, key)),
-	});
+	await setDismissedBuilds(current.filter((item) => !monitoringKeyEquals(item, key)));
 }
 
 export async function getLastPolledAt(): Promise<number | null> {

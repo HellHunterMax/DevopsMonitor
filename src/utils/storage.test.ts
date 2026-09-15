@@ -104,7 +104,10 @@ describe('storage utils', () => {
 
     await storage.dismissBuild(BASE_KEY);
     await storage.dismissBuild(BASE_KEY);
-    expect(await storage.getDismissedBuilds()).toEqual([BASE_KEY]);
+    expect(await storage.getDismissedBuilds()).toEqual([
+      expect.objectContaining(BASE_KEY),
+    ]);
+    expect((await storage.getDismissedBuilds())[0]?.dismissedAt).toEqual(expect.any(Number));
 
     await storage.undismissBuild(BASE_KEY);
     expect(await storage.getDismissedBuilds()).toEqual([]);

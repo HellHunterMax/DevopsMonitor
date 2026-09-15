@@ -108,9 +108,10 @@ describe('background poller', () => {
     const { storage, poller } = await loadModules();
     await storage.saveCredentials(ORG_URL, 'secret');
     await storage.setPipelineConfigs([createConfig()]);
+    const finishTime = '2026-08-28T10:00:00Z';
 
     installFetchMap({
-      [`/${PROJECT}/_apis/build/builds/${BUILD_ID}?`]: () => jsonResponse(createBuild()),
+      [`/${PROJECT}/_apis/build/builds/${BUILD_ID}?`]: () => jsonResponse(createBuild({ finishTime })),
       [`/${PROJECT}/_apis/build/builds/${BUILD_ID}/timeline?`]: () =>
         jsonResponse({ records: [createStage()] }),
       [`/${PROJECT}/_apis/pipelines/approvals?`]: () => jsonResponse({ value: [] }),
@@ -129,11 +130,14 @@ describe('background poller', () => {
     );
 
     await expect(storage.getBuildSnapshots()).resolves.toEqual([
-      {
+      expect.objectContaining({
         org: 'my-org',
         project: PROJECT,
         pipelineId: PIPELINE_ID,
         buildId: BUILD_ID,
+        buildStatus: 'completed',
+        buildFinishedAt: Date.parse(finishTime),
+        lastSuccessfulPollAt: expect.any(Number),
         stages: {
           Prod: {
             state: 'completed',
@@ -141,7 +145,7 @@ describe('background poller', () => {
             approvalPending: false,
           },
         },
-      },
+      }),
     ]);
 
     const lastPolledAt = await storage.getLastPolledAt();
@@ -245,6 +249,43 @@ describe('background poller', () => {
       [`/${PROJECT}/_apis/build/builds/${BUILD_ID}/timeline?`]: () =>
         jsonResponse({ records: [createStage({ state: 'pending', result: undefined })] }),
       [`/${PROJECT}/_apis/pipelines/approvals?`]: () => jsonResponse({ value: [createApproval()] }),
+    });
+
+    await poller.runPoll();
+
+    expect(chrome.notifications.create).toHaveBeenCalledWith(
+      `${PIPELINE_ID}-${BUILD_ID}-Prod-approval`,
+      expect.objectContaining({
+        message: 'Prod is waiting for your approval',
+      })
+    );
+  });
+
+  it('matches approvals when ADO serializes the build owner id as a string', async () => {
+    const { storage, poller } = await loadModules();
+    await storage.saveCredentials(ORG_URL, 'secret');
+    await storage.setPipelineConfigs([createConfig()]);
+
+    installFetchMap({
+      [`/${PROJECT}/_apis/build/builds/${BUILD_ID}?`]: () =>
+        jsonResponse(createBuild({ status: 'inProgress', result: undefined })),
+      [`/${PROJECT}/_apis/build/builds/${BUILD_ID}/timeline?`]: () =>
+        jsonResponse({ records: [createStage({ state: 'pending', result: undefined })] }),
+      [`/${PROJECT}/_apis/pipelines/approvals?`]: () =>
+        jsonResponse({
+          value: [
+            createApproval({
+              pipeline: {
+                id: String(PIPELINE_ID),
+                name: 'Deploy',
+                owner: {
+                  id: String(BUILD_ID),
+                  name: '20260828.1',
+                },
+              },
+            }),
+          ],
+        }),
     });
 
     await poller.runPoll();
