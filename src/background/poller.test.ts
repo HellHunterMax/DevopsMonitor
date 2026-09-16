@@ -89,6 +89,40 @@ function installFetchMap(map: Record<string, () => Promise<Response>>): void {
   });
 }
 
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function notificationIdPattern(logicalId: string): RegExp {
+  return new RegExp(`^${escapeRegExp(logicalId)}::\\d+::\\d+$`);
+}
+
+function expectNotificationCreated(logicalId: string, options: Record<string, unknown>): void {
+  expect(chrome.notifications.create).toHaveBeenCalledWith(
+    expect.stringMatching(notificationIdPattern(logicalId)),
+    expect.objectContaining(options)
+  );
+}
+
+function expectNthNotificationCreated(
+  callNumber: number,
+  logicalId: string,
+  options: Record<string, unknown>
+): void {
+  expect(chrome.notifications.create).toHaveBeenNthCalledWith(
+    callNumber,
+    expect.stringMatching(notificationIdPattern(logicalId)),
+    expect.objectContaining(options)
+  );
+}
+
+function expectNotificationNotCreated(logicalId: string): void {
+  expect(chrome.notifications.create).not.toHaveBeenCalledWith(
+    expect.stringMatching(notificationIdPattern(logicalId)),
+    expect.any(Object)
+  );
+}
+
 async function loadModules() {
   jest.resetModules();
   const storage = await import('../utils/storage');
@@ -121,13 +155,10 @@ describe('background poller', () => {
     await poller.runPoll();
     const after = Date.now();
 
-    expect(chrome.notifications.create).toHaveBeenCalledWith(
-      `${PIPELINE_ID}-${BUILD_ID}-Prod-complete`,
-      expect.objectContaining({
-        title: '✅ Deploy',
-        message: 'Prod: succeeded',
-      })
-    );
+    expectNotificationCreated(`${PIPELINE_ID}-${BUILD_ID}-Prod-complete`, {
+      title: '✅ Deploy',
+      message: 'Prod: succeeded',
+    });
 
     await expect(storage.getBuildSnapshots()).resolves.toEqual([
       expect.objectContaining({
@@ -229,13 +260,10 @@ describe('background poller', () => {
     await poller.runPoll();
 
     expect(chrome.notifications.create).toHaveBeenCalledTimes(1);
-    expect(chrome.notifications.create).toHaveBeenCalledWith(
-      `${PIPELINE_ID}-${BUILD_ID}-Prod-approval`,
-      expect.objectContaining({
-        title: 'Approval needed - Deploy',
-        message: 'Prod is waiting for your approval',
-      })
-    );
+    expectNotificationCreated(`${PIPELINE_ID}-${BUILD_ID}-Prod-approval`, {
+      title: 'Approval needed - Deploy',
+      message: 'Prod is waiting for your approval',
+    });
   });
 
   it('treats stage-less approvals as pending for watched pending stages', async () => {
@@ -253,12 +281,9 @@ describe('background poller', () => {
 
     await poller.runPoll();
 
-    expect(chrome.notifications.create).toHaveBeenCalledWith(
-      `${PIPELINE_ID}-${BUILD_ID}-Prod-approval`,
-      expect.objectContaining({
-        message: 'Prod is waiting for your approval',
-      })
-    );
+    expectNotificationCreated(`${PIPELINE_ID}-${BUILD_ID}-Prod-approval`, {
+      message: 'Prod is waiting for your approval',
+    });
   });
 
   it('matches approvals when ADO serializes the build owner id as a string', async () => {
@@ -290,12 +315,9 @@ describe('background poller', () => {
 
     await poller.runPoll();
 
-    expect(chrome.notifications.create).toHaveBeenCalledWith(
-      `${PIPELINE_ID}-${BUILD_ID}-Prod-approval`,
-      expect.objectContaining({
-        message: 'Prod is waiting for your approval',
-      })
-    );
+    expectNotificationCreated(`${PIPELINE_ID}-${BUILD_ID}-Prod-approval`, {
+      message: 'Prod is waiting for your approval',
+    });
   });
 
   it('does not treat pending timeline state as approval when the approvals API returns no matches', async () => {
@@ -410,16 +432,10 @@ describe('background poller', () => {
     await poller.runPoll();
 
     expect(chrome.notifications.create).toHaveBeenCalledTimes(1);
-    expect(chrome.notifications.create).toHaveBeenCalledWith(
-      `${PIPELINE_ID}-${BUILD_ID}-Acceptance-approval`,
-      expect.objectContaining({
-        message: 'Acceptance is waiting for your approval',
-      })
-    );
-    expect(chrome.notifications.create).not.toHaveBeenCalledWith(
-      `${PIPELINE_ID}-${BUILD_ID}-Prod-approval`,
-      expect.any(Object)
-    );
+    expectNotificationCreated(`${PIPELINE_ID}-${BUILD_ID}-Acceptance-approval`, {
+      message: 'Acceptance is waiting for your approval',
+    });
+    expectNotificationNotCreated(`${PIPELINE_ID}-${BUILD_ID}-Prod-approval`);
   });
 
   it('maps a stage-less approval to all parallel next-up stages after a skipped predecessor', async () => {
@@ -454,22 +470,13 @@ describe('background poller', () => {
     await poller.runPoll();
 
     expect(chrome.notifications.create).toHaveBeenCalledTimes(2);
-    expect(chrome.notifications.create).toHaveBeenCalledWith(
-      `${PIPELINE_ID}-${BUILD_ID}-Deploy West-approval`,
-      expect.objectContaining({
-        message: 'Deploy West is waiting for your approval',
-      })
-    );
-    expect(chrome.notifications.create).toHaveBeenCalledWith(
-      `${PIPELINE_ID}-${BUILD_ID}-Deploy East-approval`,
-      expect.objectContaining({
-        message: 'Deploy East is waiting for your approval',
-      })
-    );
-    expect(chrome.notifications.create).not.toHaveBeenCalledWith(
-      `${PIPELINE_ID}-${BUILD_ID}-Prod-approval`,
-      expect.any(Object)
-    );
+    expectNotificationCreated(`${PIPELINE_ID}-${BUILD_ID}-Deploy West-approval`, {
+      message: 'Deploy West is waiting for your approval',
+    });
+    expectNotificationCreated(`${PIPELINE_ID}-${BUILD_ID}-Deploy East-approval`, {
+      message: 'Deploy East is waiting for your approval',
+    });
+    expectNotificationNotCreated(`${PIPELINE_ID}-${BUILD_ID}-Prod-approval`);
   });
 
   it('keeps stage-less approvals constrained to next-up stages when mixed with named approvals', async () => {
@@ -507,22 +514,13 @@ describe('background poller', () => {
     await poller.runPoll();
 
     expect(chrome.notifications.create).toHaveBeenCalledTimes(2);
-    expect(chrome.notifications.create).toHaveBeenCalledWith(
-      `${PIPELINE_ID}-${BUILD_ID}-Acceptance-approval`,
-      expect.objectContaining({
-        message: 'Acceptance is waiting for your approval',
-      })
-    );
-    expect(chrome.notifications.create).toHaveBeenCalledWith(
-      `${PIPELINE_ID}-${BUILD_ID}-Prod-approval`,
-      expect.objectContaining({
-        message: 'Prod is waiting for your approval',
-      })
-    );
-    expect(chrome.notifications.create).not.toHaveBeenCalledWith(
-      `${PIPELINE_ID}-${BUILD_ID}-Post-check-approval`,
-      expect.any(Object)
-    );
+    expectNotificationCreated(`${PIPELINE_ID}-${BUILD_ID}-Acceptance-approval`, {
+      message: 'Acceptance is waiting for your approval',
+    });
+    expectNotificationCreated(`${PIPELINE_ID}-${BUILD_ID}-Prod-approval`, {
+      message: 'Prod is waiting for your approval',
+    });
+    expectNotificationNotCreated(`${PIPELINE_ID}-${BUILD_ID}-Post-check-approval`);
   });
 
   it('does not send duplicate completion notifications across unchanged polls', async () => {
@@ -541,6 +539,70 @@ describe('background poller', () => {
     await poller.runPoll();
 
     expect(chrome.notifications.create).toHaveBeenCalledTimes(1);
+  });
+
+  it('re-notifies the same monitored build after its snapshot is cleared and uses a fresh chrome notification id', async () => {
+    const { storage, state, poller } = await loadModules();
+    await storage.saveCredentials(ORG_URL, 'secret');
+    await storage.setPipelineConfigs([createConfig()]);
+
+    installFetchMap({
+      [`/${PROJECT}/_apis/build/builds/${BUILD_ID}?`]: () => jsonResponse(createBuild()),
+      [`/${PROJECT}/_apis/build/builds/${BUILD_ID}/timeline?`]: () =>
+        jsonResponse({ records: [createStage()] }),
+      [`/${PROJECT}/_apis/pipelines/approvals?`]: () => jsonResponse({ value: [] }),
+    });
+
+    await poller.runPoll();
+    await state.clearSnapshot(createConfig());
+    await poller.runPoll();
+
+    expect(chrome.notifications.create).toHaveBeenCalledTimes(2);
+    expectNthNotificationCreated(1, `${PIPELINE_ID}-${BUILD_ID}-Prod-complete`, {
+      title: '✅ Deploy',
+      message: 'Prod: succeeded',
+    });
+    expectNthNotificationCreated(2, `${PIPELINE_ID}-${BUILD_ID}-Prod-complete`, {
+      title: '✅ Deploy',
+      message: 'Prod: succeeded',
+    });
+
+    const [firstNotificationId, secondNotificationId] = (
+      chrome.notifications.create as jest.Mock
+    ).mock.calls.map(([notificationId]) => notificationId as string);
+    expect(firstNotificationId).not.toBe(secondNotificationId);
+  });
+
+  it('uses distinct notification ids for different build runs of the same pipeline', async () => {
+    const { storage, poller } = await loadModules();
+    await storage.saveCredentials(ORG_URL, 'secret');
+    await storage.setPipelineConfigs([
+      createConfig(),
+      createConfig({ buildId: BUILD_ID + 1 }),
+    ]);
+
+    installFetchMap({
+      [`/${PROJECT}/_apis/build/builds/${BUILD_ID}?`]: () => jsonResponse(createBuild()),
+      [`/${PROJECT}/_apis/build/builds/${BUILD_ID}/timeline?`]: () =>
+        jsonResponse({ records: [createStage()] }),
+      [`/${PROJECT}/_apis/build/builds/${BUILD_ID + 1}?`]: () =>
+        jsonResponse(createBuild({ id: BUILD_ID + 1, buildNumber: '20260828.2' })),
+      [`/${PROJECT}/_apis/build/builds/${BUILD_ID + 1}/timeline?`]: () =>
+        jsonResponse({ records: [createStage()] }),
+      [`/${PROJECT}/_apis/pipelines/approvals?`]: () => jsonResponse({ value: [] }),
+    });
+
+    await poller.runPoll();
+
+    expect(chrome.notifications.create).toHaveBeenCalledTimes(2);
+    expectNthNotificationCreated(1, `${PIPELINE_ID}-${BUILD_ID}-Prod-complete`, {
+      title: '✅ Deploy',
+      message: 'Prod: succeeded',
+    });
+    expectNthNotificationCreated(2, `${PIPELINE_ID}-${BUILD_ID + 1}-Prod-complete`, {
+      title: '✅ Deploy',
+      message: 'Prod: succeeded',
+    });
   });
 
   it('does not send duplicate approval notifications across unchanged polls', async () => {

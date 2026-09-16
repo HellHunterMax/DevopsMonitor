@@ -141,14 +141,14 @@ export async function runPoll(): Promise<void> {
 				};
 
 				const prevStage = snapshot?.stages?.[stage.name];
-				const notifId = `${config.pipelineId}-${build.id}-${stage.name}`;
+				const logicalNotificationId = `${config.pipelineId}-${build.id}-${stage.name}`;
 
 				if (stageConfig.notifyOnComplete && stage.state === "completed") {
 					const prevCompleted = prevStage?.state === "completed" && prevStage?.result === stage.result;
 					if (!prevCompleted && stage.result) {
 						const icon = stage.result === "succeeded" ? "✅" : stage.result === "failed" ? "❌" : "⚠️";
 						await sendNotification(
-							`${notifId}-complete`,
+							`${logicalNotificationId}-complete`,
 							`${icon} ${config.pipelineName}`,
 							`${stage.name}: ${stage.result}`,
 							client.orgUrl,
@@ -160,7 +160,7 @@ export async function runPoll(): Promise<void> {
 
 				if (stageConfig.notifyOnApprovalNeeded && approvalPending && !prevStage?.approvalPending) {
 					await sendNotification(
-						`${notifId}-approval`,
+						`${logicalNotificationId}-approval`,
 						`Approval needed - ${config.pipelineName}`,
 						`${stage.name} is waiting for your approval`,
 						client.orgUrl,
