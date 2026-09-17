@@ -1,6 +1,6 @@
 import { runPoll } from "./poller";
 import { runStaleDataPrune } from "./state";
-import { handleNotificationClick, sendTestNotification } from "./notifier";
+import { handleNotificationClick, handleNotificationClosed, sendTestNotification } from "./notifier";
 
 const POLL_ALARM_NAME = "devops-poll";
 const PRUNE_ALARM_NAME = "devops-prune";
@@ -48,6 +48,10 @@ chrome.alarms.onAlarm.addListener((alarm) => {
 
 chrome.notifications.onClicked.addListener((notificationId) => {
 	void handleNotificationClick(notificationId).catch(console.error);
+});
+
+chrome.notifications.onClosed.addListener((notificationId) => {
+	void handleNotificationClosed(notificationId).catch(console.error);
 });
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {

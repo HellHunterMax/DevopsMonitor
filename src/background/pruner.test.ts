@@ -410,6 +410,7 @@ describe('service-worker stale-data cleanup triggers', () => {
     const runPoll = jest.fn().mockResolvedValue(undefined);
     const sendTestNotification = jest.fn().mockResolvedValue(undefined);
     const handleNotificationClick = jest.fn().mockResolvedValue(undefined);
+    const handleNotificationClosed = jest.fn().mockResolvedValue(undefined);
     const runStaleDataPrune = jest.fn().mockResolvedValue(undefined);
 
     jest.doMock('./poller', () => ({
@@ -418,6 +419,7 @@ describe('service-worker stale-data cleanup triggers', () => {
     jest.doMock('./notifier', () => ({
       sendTestNotification,
       handleNotificationClick,
+      handleNotificationClosed,
     }));
     jest.doMock('./state', () => ({
       runStaleDataPrune,
@@ -426,6 +428,7 @@ describe('service-worker stale-data cleanup triggers', () => {
     require('./service-worker');
 
     return {
+      handleNotificationClosed,
       runPoll,
       runStaleDataPrune,
     };
@@ -484,5 +487,20 @@ describe('service-worker stale-data cleanup triggers', () => {
     await flushPromises();
 
     expect(runStaleDataPrune).toHaveBeenCalledTimes(1);
+  });
+
+  it('registers notification close handling without re-opening tabs or clearing notifications', async () => {
+    const { handleNotificationClosed } = await loadServiceWorkerWithMocks();
+
+    expect(chrome.notifications.onClosed.hasListeners()).toBe(true);
+
+    (
+      chrome.notifications.onClosed as typeof chrome.notifications.onClosed & {
+        callListeners: (notificationId: string, byUser: boolean) => void;
+      }
+    ).callListeners('closed-id', true);
+    await flushPromises();
+
+    expect(handleNotificationClosed).toHaveBeenCalledWith('closed-id');
   });
 });

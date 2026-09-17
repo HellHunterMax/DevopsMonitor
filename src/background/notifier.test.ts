@@ -87,4 +87,24 @@ describe('background notifier', () => {
     expect(chrome.notifications.clear).toHaveBeenCalledWith(`${LOGICAL_ID}::1726500000000::0`);
     expect(chrome.notifications.clear).toHaveBeenCalledWith(`${LOGICAL_ID}::1726500000000::0`);
   });
+
+  it('removes the closed emitted notification id without opening a tab or clearing again', async () => {
+    jest.spyOn(Date, 'now').mockReturnValue(1_726_500_000_000);
+    const notifier = await loadNotifierModule();
+
+    await notifier.sendNotification(
+      LOGICAL_ID,
+      '✅ Deploy',
+      'Prod: succeeded',
+      'https://dev.azure.com/my-org',
+      'My Project',
+      77
+    );
+    await notifier.handleNotificationClosed(`${LOGICAL_ID}::1726500000000::0`);
+
+    const notificationMap = await chrome.storage.local.get('notification_map');
+    expect(notificationMap.notification_map).toEqual({});
+    expect(chrome.tabs.create).not.toHaveBeenCalled();
+    expect(chrome.notifications.clear).not.toHaveBeenCalled();
+  });
 });

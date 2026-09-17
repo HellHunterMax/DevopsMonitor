@@ -66,3 +66,13 @@ export async function handleNotificationClick(notificationId: string): Promise<v
     chrome.notifications.clear(notificationId);
   }
 }
+
+export async function handleNotificationClosed(notificationId: string): Promise<void> {
+  const map = await getNotificationMap();
+  if (!(notificationId in map)) {
+    return;
+  }
+
+  delete map[notificationId];
+  await saveNotificationMap(map);
+}
